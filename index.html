@@ -40,6 +40,7 @@
     --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html { -webkit-text-size-adjust: 100%; }
   body {
     font-family: var(--sans);
@@ -208,6 +209,28 @@
   .wn-grad { font-size: .7rem; color: var(--ink-soft); }
   .wn-del { background: none; border: none; color: var(--ink-soft); cursor: pointer; font-size: .95rem; padding: 4px; }
   .hint { font-size: .78rem; color: var(--ink-soft); margin-top: 10px; word-break: keep-all; }
+  .hint-tight { margin-top: 0; margin-bottom: 8px; }
+
+  /* ── 사진 추가 ── */
+  .upload-box {
+    display: block; border: 2px dashed var(--line); border-radius: 12px; padding: 18px;
+    text-align: center; cursor: pointer; color: var(--ink-soft); font-size: .9rem;
+  }
+  .upload-box:hover { border-color: var(--accent); }
+  .upload-box small { font-size: .75rem; }
+  .upload-box img { max-width: 100%; max-height: 240px; border-radius: 8px; display: block; margin: 0 auto 8px; }
+  .addrow { display: flex; gap: 8px; margin-top: 10px; }
+  .addrow input {
+    flex: 1; min-width: 0; padding: 11px 12px; border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--card); color: var(--ink); font-size: .95rem;
+  }
+  .addrow .startBtn { flex: 1; width: auto; margin-top: 0; padding: 11px; }
+  .wrow { display: grid; grid-template-columns: 42px 1.1fr 1.5fr 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .wrow input {
+    padding: 8px 9px; border: 1.5px solid var(--line); border-radius: 8px;
+    background: var(--card); color: var(--ink); font-size: .86rem; min-width: 0;
+  }
+  .wrow .del { background: none; border: none; color: var(--ink-soft); cursor: pointer; font-size: .95rem; padding: 2px; }
 
   /* ── cloud sync ── */
   .sync-status { text-transform: none; letter-spacing: 0; margin-left: 6px; font-weight: 700; }
@@ -236,12 +259,13 @@
 <div class="wrap">
   <header>
     <div class="logo">VOCA<em>.</em></div>
-    <div class="tagline">Day 17–18 어원 단어 시험</div>
+    <div class="tagline">나의 영어 단어 시험장</div>
     <button id="themeBtn" type="button">테마</button>
   </header>
 
   <nav>
     <button id="tab-home" class="on" type="button">학습</button>
+    <button id="tab-add" type="button">추가</button>
     <button id="tab-history" type="button">기록</button>
     <button id="tab-wrong" type="button">오답노트<span class="badge" id="wrongBadge" hidden>0</span></button>
   </nav>
@@ -259,12 +283,7 @@
 
     <div class="card">
       <h2>범위 선택</h2>
-      <div class="optgrid" id="scopeGrid">
-        <button class="opt sel" data-scope="17" type="button">Day 17<small>25 단어 · -late / -gest / -fer / -cast / -ject</small></button>
-        <button class="opt" data-scope="18" type="button">Day 18<small>29 단어 · -tract / -treat / -duce / -pel</small></button>
-        <button class="opt" data-scope="all" type="button">전체 (Day 17+18)<small>54 단어 모두</small></button>
-        <button class="opt" data-scope="wrong" type="button">오답노트만<small>틀렸던 단어 집중 공략</small></button>
-      </div>
+      <div class="optgrid" id="scopeGrid"></div>
     </div>
 
     <div class="card">
@@ -288,6 +307,32 @@
         <button id="syncApply" type="button">적용</button>
       </div>
       <p class="hint">이 코드가 내 기록의 열쇠입니다. 폰·PC 등 다른 기기에서 같은 코드를 입력하면 성적과 오답노트가 하나로 이어집니다.</p>
+    </div>
+  </section>
+
+  <!-- ═══ 단어 추가 ═══ -->
+  <section class="view" id="view-add">
+    <div class="card">
+      <h2>사진으로 단어 추가</h2>
+      <label class="upload-box">
+        <input type="file" id="upFile" accept="image/*" hidden>
+        <img id="upThumb" alt="선택한 사진 미리보기" hidden>
+        <span id="upHint">여기를 눌러 단어장 사진 선택<br><small>번호·단어·뜻 표가 잘 보이게 찍어주세요</small></span>
+      </label>
+      <div class="addrow">
+        <input id="upDay" type="number" min="1" inputmode="numeric" placeholder="Day 번호 (비우면 자동 감지)">
+        <button class="startBtn" id="upGo" type="button">AI 분석 →</button>
+      </div>
+      <p class="hint" id="upStatus"></p>
+    </div>
+    <div class="card" id="reviewCard" hidden>
+      <h2>추출 결과 확인 <span id="revCount"></span></h2>
+      <p class="hint hint-tight">AI가 잘못 읽은 부분이 있으면 고친 뒤 저장하세요.</p>
+      <div id="revRows"></div>
+      <div class="btnrow">
+        <button id="revAddRow" type="button">행 추가</button>
+        <button id="revSave" class="primary" type="button">단어장에 저장</button>
+      </div>
     </div>
   </section>
 
@@ -366,9 +411,8 @@
   let wrongDB = load(KEY_WRONG, {});   // { word: {wrong, streak, last} }
   let history = load(KEY_HIST, []);    // [{date, scope, mode, total, correct, pct, wrong:[]}]
 
-  // ── cloud (Supabase) ──
-  const SB_URL = "https://nzsnuyodgmfwlrlrtped.supabase.co";
-  const SB_KEY = "sb_publishable_VWcRF8Ny8Rn-VK38FMtShA_ltH_ZH4Q";
+  // ── cloud (Cloudflare Worker API) ──
+  const API = "https://voca-api.einsgoing.workers.dev";
   const KEY_SYNC = "voca_sync_code";
   let cloudOK = false;
   let syncCode = localStorage.getItem(KEY_SYNC);
@@ -377,19 +421,15 @@
     localStorage.setItem(KEY_SYNC, syncCode);
   }
 
-  async function sb(path, opts = {}) {
-    const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+  async function api(path, opts = {}) {
+    const res = await fetch(API + path, {
       method: opts.method || "GET",
-      headers: {
-        apikey: SB_KEY,
-        Authorization: `Bearer ${SB_KEY}`,
-        "Content-Type": "application/json",
-        ...(opts.prefer ? { Prefer: opts.prefer } : {}),
-      },
+      headers: opts.body ? { "Content-Type": "application/json" } : undefined,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
-    if (!res.ok) throw new Error(res.status + " " + (await res.text()));
-    return res.status === 204 ? null : res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+    return data;
   }
 
   function setSync(txt, cls) {
@@ -400,19 +440,23 @@
 
   const histKey = (h) => `${h.date}|${h.scope}|${h.mode}|${h.pct}`;
 
+  async function loadWords() {
+    const d = await api("/api/words");
+    if (d.words.length) { WORDS.length = 0; WORDS.push(...d.words); indexWords(); }
+  }
+
   async function pushWrongAll() {
     const rows = Object.entries(wrongDB).map(([word, e]) => ({
-      sync_code: syncCode, word, wrong_count: e.wrong, streak: e.streak, last_wrong: e.last || null,
+      word, wrong_count: e.wrong, streak: e.streak, last_wrong: e.last || null,
     }));
-    if (rows.length)
-      await sb("wrong_notes?on_conflict=sync_code,word", { method: "POST", prefer: "resolution=merge-duplicates", body: rows });
+    if (rows.length) await api("/api/wrong", { method: "POST", body: { sync_code: syncCode, rows } });
   }
   function cloudDeleteWrong(word) {
-    if (cloudOK) sb(`wrong_notes?sync_code=eq.${syncCode}&word=eq.${encodeURIComponent(word)}`, { method: "DELETE" }).catch(() => {});
+    if (cloudOK) api(`/api/wrong?code=${syncCode}&word=${encodeURIComponent(word)}`, { method: "DELETE" }).catch(() => {});
   }
   function cloudPushResult(h) {
     if (!cloudOK) return;
-    sb("results", {
+    api("/api/results", {
       method: "POST",
       body: {
         sync_code: syncCode, taken_at: new Date().toISOString(),
@@ -424,14 +468,14 @@
   async function cloudInit() {
     $("syncInput").value = syncCode;
     try {
-      // 1) 단어: DB에 단어가 있으면 그것을 사용 (없으면 words.js 사용)
-      const cw = await sb("words?select=day,num,word,meaning&order=day.asc,num.asc");
-      if (cw.length) { WORDS.length = 0; WORDS.push(...cw); indexWords(); }
+      // 1) 단어: DB 기준 (실패 시 words.js로 동작)
+      await loadWords();
       cloudOK = true;
+      renderScopes();
 
       // 2) 오답노트 병합 (기기 간: 틀린 횟수는 큰 쪽, 졸업 진행도는 낮은 쪽 기준)
-      const notes = await sb(`wrong_notes?select=word,wrong_count,streak,last_wrong&sync_code=eq.${syncCode}`);
-      notes.forEach((n) => {
+      const st = await api(`/api/state?code=${syncCode}`);
+      st.wrong.forEach((n) => {
         const l = wrongDB[n.word];
         wrongDB[n.word] = {
           wrong: Math.max(l ? l.wrong : 0, n.wrong_count),
@@ -443,8 +487,7 @@
       pushWrongAll().catch(() => {});
 
       // 3) 성적 병합: 클라우드에 없는 로컬 기록은 올리고, 합쳐서 정렬
-      const rows = await sb(`results?select=taken_at,scope,mode,total,correct,pct,wrong_words&sync_code=eq.${syncCode}&order=taken_at.desc&limit=300`);
-      const cloudHist = rows.map((r) => ({
+      const cloudHist = st.results.map((r) => ({
         date: r.taken_at.slice(0, 16).replace("T", " "),
         scope: r.scope, mode: r.mode, total: r.total, correct: r.correct, pct: r.pct,
         wrong: r.wrong_words || [],
@@ -452,7 +495,7 @@
       const seen = new Set(cloudHist.map(histKey));
       const localOnly = history.filter((h) => !seen.has(histKey(h)));
       localOnly.forEach((h) => {
-        sb("results", {
+        api("/api/results", {
           method: "POST",
           body: {
             sync_code: syncCode,
@@ -492,21 +535,42 @@
   };
 
   // ── tabs / views ──
-  const views = ["home", "quiz", "result", "history", "wrong"];
+  const views = ["home", "add", "quiz", "result", "history", "wrong"];
   function show(v) {
     views.forEach((x) => $("view-" + x).classList.toggle("on", x === v));
-    ["home", "history", "wrong"].forEach((x) =>
+    ["home", "add", "history", "wrong"].forEach((x) =>
       $("tab-" + x).classList.toggle("on", x === v));
     if (v === "home") renderHome();
     if (v === "history") renderHistory();
     if (v === "wrong") renderWrongNote();
   }
   $("tab-home").onclick = () => show("home");
+  $("tab-add").onclick = () => show("add");
   $("tab-history").onclick = () => show("history");
   $("tab-wrong").onclick = () => show("wrong");
 
   // ── option selection ──
   let scope = "17", mode = "type";
+  function renderScopes() {
+    const days = [...new Set(WORDS.map((w) => w.day))].sort((a, b) => a - b);
+    const valid = [...days.map(String), "all", "wrong"];
+    if (!valid.includes(scope)) scope = String(days[0] ?? "all");
+    const g = $("scopeGrid");
+    g.innerHTML = "";
+    const mk = (val, title, sub) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "opt" + (val === scope ? " sel" : "");
+      b.dataset.scope = val;
+      const s = document.createElement("small");
+      s.textContent = sub;
+      b.append(document.createTextNode(title), s);
+      g.appendChild(b);
+    };
+    days.forEach((d) => mk(String(d), `Day ${d}`, `${WORDS.filter((w) => w.day === d).length} 단어`));
+    mk("all", "전체", `${WORDS.length} 단어 모두`);
+    mk("wrong", "오답노트만", "틀렸던 단어 집중 공략");
+  }
   $("scopeGrid").addEventListener("click", (e) => {
     const b = e.target.closest(".opt"); if (!b) return;
     scope = b.dataset.scope;
@@ -528,7 +592,7 @@
     return r;
   };
   const pick = (a, n) => shuffle(a).slice(0, n);
-  const scopeLabel = { "17": "Day 17", "18": "Day 18", "all": "Day 17+18", "wrong": "오답노트" };
+  const scopeName = (s) => (s === "all" ? "전체" : s === "wrong" ? "오답노트" : "Day " + s);
   const modeLabel = { "mc-ek": "객관식(뜻)", "mc-ke": "객관식(단어)", "type": "주관식", "mix": "혼합" };
 
   function updateBadge() {
@@ -778,7 +842,7 @@
 
     const entry = {
       date: new Date().toISOString().slice(0, 16).replace("T", " "),
-      scope: scopeLabel[scope], mode: modeLabel[mode],
+      scope: scopeName(scope), mode: modeLabel[mode],
       total, correct, pct, wrong: [...sessionWrong],
     };
     history.unshift(entry);
@@ -833,7 +897,7 @@
   $("histClear").onclick = () => {
     if (confirm("성적 기록을 모두 삭제할까요?")) {
       history = []; save(KEY_HIST, history);
-      if (cloudOK) sb(`results?sync_code=eq.${syncCode}`, { method: "DELETE" }).catch(() => {});
+      if (cloudOK) api(`/api/results?code=${syncCode}`, { method: "DELETE" }).catch(() => {});
       renderHistory(); renderHome();
     }
   };
@@ -864,11 +928,108 @@
   $("wnClear").onclick = () => {
     if (confirm("오답노트를 모두 비울까요?")) {
       wrongDB = {}; save(KEY_WRONG, wrongDB);
-      if (cloudOK) sb(`wrong_notes?sync_code=eq.${syncCode}`, { method: "DELETE" }).catch(() => {});
+      if (cloudOK) api(`/api/wrong?code=${syncCode}`, { method: "DELETE" }).catch(() => {});
       renderWrongNote();
     }
   };
 
+  // ── 사진으로 단어 추가 ──
+  let upData = null, revWords = [];
+
+  $("upFile").onchange = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const img = new Image();
+    img.onload = () => {
+      // 업로드 전 1600px로 축소 (전송량·분석 속도)
+      const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.width * scale);
+      cv.height = Math.round(img.height * scale);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      upData = cv.toDataURL("image/jpeg", 0.85);
+      $("upThumb").src = upData;
+      $("upThumb").hidden = false;
+      $("upHint").hidden = true;
+      $("upStatus").textContent = "";
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(f);
+  };
+
+  $("upGo").onclick = async () => {
+    if (!upData) { $("upStatus").textContent = "사진을 먼저 선택해 주세요."; return; }
+    $("upGo").disabled = true;
+    $("upStatus").textContent = "AI가 사진을 읽는 중… (10초쯤 걸립니다)";
+    try {
+      const d = await api("/api/analyze", {
+        method: "POST",
+        body: { image: upData, day: Number($("upDay").value) || null },
+      });
+      revWords = (d.words || []).map((w) => ({ num: w.num, word: w.word, meaning: w.meaning }));
+      if (!$("upDay").value && d.day) $("upDay").value = d.day;
+      renderReview();
+      $("reviewCard").hidden = false;
+      $("upStatus").textContent = `${revWords.length}개 항목을 찾았습니다. 아래에서 확인 후 저장하세요.`;
+      $("reviewCard").scrollIntoView({ behavior: "smooth" });
+    } catch (err) {
+      $("upStatus").textContent = "분석 실패: " + err.message;
+    }
+    $("upGo").disabled = false;
+  };
+
+  function renderReview() {
+    const box = $("revRows");
+    box.innerHTML = "";
+    revWords.forEach((w, i) => {
+      const row = document.createElement("div");
+      row.className = "wrow";
+      const mkInput = (val, key, ph) => {
+        const inp = document.createElement("input");
+        inp.value = val ?? "";
+        inp.placeholder = ph;
+        if (key === "word") { inp.autocapitalize = "off"; inp.spellcheck = false; }
+        inp.oninput = () => { revWords[i][key] = key === "num" ? Number(inp.value) : inp.value; };
+        return inp;
+      };
+      const del = document.createElement("button");
+      del.type = "button"; del.className = "del"; del.textContent = "✕"; del.title = "이 행 삭제";
+      del.onclick = () => { revWords.splice(i, 1); renderReview(); };
+      row.append(mkInput(w.num, "num", "번호"), mkInput(w.word, "word", "영어 단어"), mkInput(w.meaning, "meaning", "우리말 뜻"), del);
+      box.appendChild(row);
+    });
+    $("revCount").textContent = `(${revWords.length}개)`;
+  }
+
+  $("revAddRow").onclick = () => { revWords.push({ num: revWords.length + 1, word: "", meaning: "" }); renderReview(); };
+
+  $("revSave").onclick = async () => {
+    const day = Number($("upDay").value);
+    if (!day) { alert("Day 번호를 입력해 주세요."); return; }
+    const rows = revWords
+      .filter((w) => w.word && w.meaning)
+      .map((w, i) => ({ day, num: Number(w.num) || i + 1, word: String(w.word).trim().toLowerCase(), meaning: String(w.meaning).trim() }));
+    if (!rows.length) { alert("저장할 단어가 없습니다."); return; }
+    $("revSave").disabled = true;
+    try {
+      await api("/api/words", { method: "POST", body: { words: rows } });
+      await loadWords();
+      renderScopes();
+      alert(`Day ${day}에 단어 ${rows.length}개를 저장했습니다!`);
+      revWords = []; upData = null;
+      $("reviewCard").hidden = true;
+      $("upThumb").hidden = true; $("upHint").hidden = false;
+      $("upFile").value = ""; $("upDay").value = ""; $("upStatus").textContent = "";
+      scope = String(day);
+      renderScopes();
+      show("home");
+    } catch (err) {
+      alert("저장 실패: " + err.message);
+    }
+    $("revSave").disabled = false;
+  };
+
+  renderScopes();
   renderHome();
   cloudInit();
 })();

@@ -1,0 +1,12 @@
+name = "voca-api"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "voca-db"
+database_id = "d8fe6ffc-dc06-406d-9d75-2f4d73d015fc"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "voca-photos"

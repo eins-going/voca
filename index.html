@@ -155,16 +155,25 @@
   .choice.correct { border-color: var(--good); background: var(--good-soft); }
   .choice.wrong { border-color: var(--bad); background: var(--bad-soft); }
   .choice:disabled { cursor: default; opacity: .85; }
-  .typebox { display: flex; gap: 8px; }
-  .typebox input {
-    flex: 1; padding: 13px 15px; font-size: 1.1rem; font-family: var(--serif);
-    border: 1.5px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink);
+  .slots {
+    display: flex; flex-wrap: wrap; gap: 6px; cursor: text; margin-bottom: 14px;
+    min-height: 46px;
   }
-  .typebox input:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+  .slot {
+    width: 36px; height: 46px; border: 1.5px solid var(--line); border-radius: 8px;
+    background: var(--card); display: flex; align-items: center; justify-content: center;
+    font-family: var(--serif); font-size: 1.35rem; font-weight: 700;
+  }
+  .slot.filled { border-color: var(--ink-soft); }
+  .slot.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .slots.good .slot { border-color: var(--good); background: var(--good-soft); }
+  .slots.bad .slot { border-color: var(--bad); background: var(--bad-soft); }
+  .ghost-input { position: absolute; opacity: 0; width: 1px; height: 1px; border: none; }
   .typebox button {
-    padding: 0 22px; background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    width: 100%; padding: 13px; background: var(--accent); color: #fff; border: none; border-radius: 10px;
     font-weight: 700; cursor: pointer; font-size: .95rem; font-family: var(--sans);
   }
+  .typebox button:disabled { opacity: .5; cursor: default; }
   .feedback { margin-top: 16px; border-radius: 10px; padding: 13px 15px; font-size: .92rem; display: none; }
   .feedback.good { display: block; background: var(--good-soft); color: var(--good); font-weight: 600; }
   .feedback.bad { display: block; background: var(--bad-soft); color: var(--ink); }
@@ -285,8 +294,9 @@
       <div id="qPrompt"></div>
       <div class="choices" id="qChoices"></div>
       <div class="typebox" id="qTypebox" hidden>
-        <input id="qInput" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="영어 철자를 입력하세요">
-        <button id="qSubmit" type="button">확인</button>
+        <div class="slots" id="qSlots"></div>
+        <input id="qInput" class="ghost-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="영어 철자 입력">
+        <button id="qSubmit" type="button">확인 (Enter)</button>
       </div>
       <div class="feedback" id="qFeedback"></div>
       <button class="nextBtn" id="qNext" type="button">다음 문제 →</button>
@@ -507,14 +517,39 @@
         choices.appendChild(b);
       });
     } else {
-      prompt.innerHTML = `<div class="prompt-meaning"></div><div class="prompt-sub">이 뜻의 영어 단어를 입력하세요 (철자 정확히)</div>`;
+      prompt.innerHTML = `<div class="prompt-meaning"></div><div class="prompt-sub">이 뜻의 영어 단어를 입력하세요 — 칸 수가 글자 수입니다</div>`;
       prompt.querySelector(".prompt-meaning").textContent = w.meaning;
       typebox.hidden = false;
-      $("qInput").value = "";
-      $("qInput").disabled = false; $("qSubmit").disabled = false;
-      setTimeout(() => $("qInput").focus(), 50);
+      const slots = $("qSlots");
+      slots.className = "slots";
+      slots.innerHTML = "";
+      for (let i = 0; i < w.word.length; i++) {
+        const c = document.createElement("div");
+        c.className = "slot";
+        slots.appendChild(c);
+      }
+      const inp = $("qInput");
+      inp.value = ""; inp.maxLength = w.word.length;
+      inp.disabled = false; $("qSubmit").disabled = false;
+      renderSlots();
+      setTimeout(() => inp.focus(), 50);
     }
   }
+
+  function renderSlots() {
+    const v = $("qInput").value;
+    [...$("qSlots").children].forEach((c, i) => {
+      c.textContent = v[i] || "";
+      c.classList.toggle("filled", i < v.length);
+      c.classList.toggle("active", i === v.length && !locked);
+    });
+  }
+  $("qInput").addEventListener("input", () => {
+    const inp = $("qInput");
+    inp.value = inp.value.toLowerCase().replace(/[^a-z]/g, "");
+    renderSlots();
+  });
+  $("qSlots").addEventListener("click", () => { if (!locked) $("qInput").focus(); });
 
   function answer(ok, btn, correctText) {
     if (locked) return;
@@ -558,6 +593,13 @@
     const ok = v === w.word.toLowerCase();
     if (!(w.word in firstTry)) firstTry[w.word] = ok;
     $("qInput").disabled = true; $("qSubmit").disabled = true;
+    $("qInput").blur();
+    renderSlots();
+    $("qSlots").classList.add(ok ? "good" : "bad");
+    if (!ok) {
+      // 정답 철자를 슬롯에 공개
+      [...$("qSlots").children].forEach((c, i) => { c.textContent = w.word[i] || ""; });
+    }
 
     const fb = $("qFeedback");
     if (ok) {

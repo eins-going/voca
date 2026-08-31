@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOCA — 단어 암기 시험</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📘</text></svg>">
+<style>
+  :root {
+    --paper: #F7F6F1;
+    --card: #FFFFFF;
+    --ink: #1E2530;
+    --ink-soft: #5B6270;
+    --line: #E3E1D8;
+    --accent: #2B55D4;
+    --accent-soft: #EBF0FF;
+    --good: #178F6B;
+    --good-soft: #E4F4EE;
+    --bad: #D64545;
+    --bad-soft: #FBEAEA;
+    --amber: #B97A18;
+    --amber-soft: #FBF1DE;
+    --shadow: 0 1px 3px rgba(30, 37, 48, .08), 0 8px 24px rgba(30, 37, 48, .06);
+    --serif: Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Pretendard, "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14181F;
+      --card: #1C222C;
+      --ink: #E8EAF0;
+      --ink-soft: #9AA3B2;
+      --line: #2C3440;
+      --accent: #7C9BFF;
+      --accent-soft: #223052;
+      --good: #3DBE96;
+      --good-soft: #1B3730;
+      --bad: #E4736F;
+      --bad-soft: #40252A;
+      --amber: #E2B15C;
+      --amber-soft: #3B3120;
+      --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #F7F6F1; --card: #FFFFFF; --ink: #1E2530; --ink-soft: #5B6270;
+    --line: #E3E1D8; --accent: #2B55D4; --accent-soft: #EBF0FF;
+    --good: #178F6B; --good-soft: #E4F4EE; --bad: #D64545; --bad-soft: #FBEAEA;
+    --amber: #B97A18; --amber-soft: #FBF1DE;
+    --shadow: 0 1px 3px rgba(30,37,48,.08), 0 8px 24px rgba(30,37,48,.06);
+  }
+  :root[data-theme="dark"] {
+    --paper: #14181F; --card: #1C222C; --ink: #E8EAF0; --ink-soft: #9AA3B2;
+    --line: #2C3440; --accent: #7C9BFF; --accent-soft: #223052;
+    --good: #3DBE96; --good-soft: #1B3730; --bad: #E4736F; --bad-soft: #40252A;
+    --amber: #E2B15C; --amber-soft: #3B3120;
+    --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.55;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 56px; }
+
+  /* ── header ── */
+  header {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 8px 0 18px;
+  }
+  .logo { font-family: var(--serif); font-size: 1.7rem; font-weight: 700; letter-spacing: .5px; }
+  .logo em { font-style: normal; color: var(--accent); }
+  .tagline { font-size: .8rem; color: var(--ink-soft); }
+  #themeBtn {
+    margin-left: auto; border: 1px solid var(--line); background: var(--card);
+    border-radius: 99px; padding: 4px 12px; cursor: pointer; color: var(--ink-soft); font-size: .8rem;
+  }
+
+  /* ── tabs ── */
+  nav { display: flex; gap: 6px; margin-bottom: 20px; }
+  nav button {
+    flex: 1; padding: 9px 0; border: 1px solid var(--line); background: var(--card);
+    border-radius: 10px; font-size: .9rem; color: var(--ink-soft); cursor: pointer; font-family: var(--sans);
+  }
+  nav button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 600; }
+  nav button .badge {
+    display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px;
+    background: var(--bad); color: #fff; border-radius: 99px; font-size: .7rem; font-weight: 700;
+  }
+
+  .view { display: none; }
+  .view.on { display: block; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px; box-shadow: var(--shadow); margin-bottom: 14px;
+  }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-soft); margin-bottom: 12px; font-weight: 600; }
+
+  /* ── home: stats ── */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { text-align: center; padding: 6px 0; }
+  .stat b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; font-family: var(--serif); }
+  .stat span { font-size: .75rem; color: var(--ink-soft); }
+
+  /* ── home: options ── */
+  .optgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .opt {
+    border: 1.5px solid var(--line); border-radius: 10px; padding: 12px 14px;
+    cursor: pointer; background: var(--card); text-align: left; font-family: var(--sans); color: var(--ink);
+  }
+  .opt small { display: block; color: var(--ink-soft); font-size: .75rem; margin-top: 2px; }
+  .opt.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .opt.sel small { color: var(--accent); }
+  .check {
+    display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: .88rem; color: var(--ink-soft);
+    cursor: pointer; user-select: none;
+  }
+  .check input { width: 17px; height: 17px; accent-color: var(--accent); }
+  .startBtn {
+    width: 100%; margin-top: 6px; padding: 15px; font-size: 1.05rem; font-weight: 700;
+    background: var(--accent); color: #fff; border: none; border-radius: 12px; cursor: pointer; font-family: var(--sans);
+  }
+  .startBtn:active { transform: translateY(1px); }
+
+  /* ── quiz ── */
+  .qtop { display: flex; justify-content: space-between; align-items: center; font-size: .82rem; color: var(--ink-soft); margin-bottom: 8px; }
+  .qtop b { font-variant-numeric: tabular-nums; color: var(--ink); }
+  .bar { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; margin-bottom: 20px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .3s ease; }
+  .qtype {
+    display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .08em;
+    color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 3px 9px; margin-bottom: 14px;
+  }
+  .qtype.retry { color: var(--amber); background: var(--amber-soft); }
+  .prompt-word { font-family: var(--serif); font-size: 2.4rem; font-weight: 700; margin-bottom: 4px; overflow-wrap: break-word; }
+  .prompt-meaning { font-size: 1.25rem; font-weight: 600; margin-bottom: 4px; word-break: keep-all; }
+  .prompt-sub { font-size: .82rem; color: var(--ink-soft); margin-bottom: 18px; }
+  .choices { display: grid; gap: 8px; }
+  .choice {
+    text-align: left; padding: 13px 15px; border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--card); cursor: pointer; font-size: .95rem; font-family: var(--sans); color: var(--ink);
+    display: flex; gap: 10px; align-items: baseline; word-break: keep-all;
+  }
+  .choice .num {
+    flex: none; width: 20px; height: 20px; border-radius: 6px; background: var(--paper); border: 1px solid var(--line);
+    font-size: .72rem; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink-soft); font-variant-numeric: tabular-nums; align-self: center;
+  }
+  .choice.en { font-family: var(--serif); font-size: 1.05rem; }
+  .choice:not(:disabled):hover { border-color: var(--accent); }
+  .choice.correct { border-color: var(--good); background: var(--good-soft); }
+  .choice.wrong { border-color: var(--bad); background: var(--bad-soft); }
+  .choice:disabled { cursor: default; opacity: .85; }
+  .typebox { display: flex; gap: 8px; }
+  .typebox input {
+    flex: 1; padding: 13px 15px; font-size: 1.1rem; font-family: var(--serif);
+    border: 1.5px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink);
+  }
+  .typebox input:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+  .typebox button {
+    padding: 0 22px; background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    font-weight: 700; cursor: pointer; font-size: .95rem; font-family: var(--sans);
+  }
+  .feedback { margin-top: 16px; border-radius: 10px; padding: 13px 15px; font-size: .92rem; display: none; }
+  .feedback.good { display: block; background: var(--good-soft); color: var(--good); font-weight: 600; }
+  .feedback.bad { display: block; background: var(--bad-soft); color: var(--ink); }
+  .feedback.bad b { color: var(--bad); }
+  .feedback .ans { font-family: var(--serif); }
+  .nextBtn {
+    width: 100%; margin-top: 12px; padding: 13px; font-size: .98rem; font-weight: 700;
+    background: var(--ink); color: var(--paper); border: none; border-radius: 10px; cursor: pointer; display: none; font-family: var(--sans);
+  }
+  .quitBtn { margin-top: 14px; width: 100%; background: none; border: none; color: var(--ink-soft); font-size: .8rem; cursor: pointer; text-decoration: underline; font-family: var(--sans); }
+
+  /* ── result ── */
+  .score-big { text-align: center; padding: 10px 0 4px; }
+  .score-big b { font-family: var(--serif); font-size: 3.4rem; font-variant-numeric: tabular-nums; }
+  .score-big b small { font-size: 1.4rem; }
+  .score-big p { color: var(--ink-soft); font-size: .85rem; }
+  .grade { font-size: 1.05rem; font-weight: 700; text-align: center; margin-bottom: 8px; }
+  .wrong-list { margin-top: 10px; }
+  .witem {
+    display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px;
+    border-bottom: 1px dashed var(--line); font-size: .9rem; align-items: baseline;
+  }
+  .witem:last-child { border-bottom: none; }
+  .witem .w { font-family: var(--serif); font-weight: 700; }
+  .witem .m { color: var(--ink-soft); text-align: right; font-size: .82rem; word-break: keep-all; }
+  .btnrow { display: flex; gap: 8px; margin-top: 8px; }
+  .btnrow button {
+    flex: 1; padding: 13px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: .95rem; font-family: var(--sans);
+    border: 1.5px solid var(--line); background: var(--card); color: var(--ink);
+  }
+  .btnrow button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── history ── */
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); padding: 6px 4px; border-bottom: 1.5px solid var(--line); font-weight: 600; }
+  td { padding: 9px 4px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  td.pct { font-weight: 700; }
+  tr:last-child td { border-bottom: none; }
+  .empty { text-align: center; color: var(--ink-soft); font-size: .88rem; padding: 26px 0; }
+  .danger { background: none; border: none; color: var(--ink-soft); font-size: .78rem; cursor: pointer; text-decoration: underline; margin-top: 10px; font-family: var(--sans); }
+
+  /* ── wrong note ── */
+  .wn-item { display: flex; align-items: center; gap: 10px; padding: 11px 2px; border-bottom: 1px dashed var(--line); }
+  .wn-item:last-child { border-bottom: none; }
+  .wn-word { font-family: var(--serif); font-weight: 700; font-size: 1.02rem; }
+  .wn-mean { font-size: .8rem; color: var(--ink-soft); word-break: keep-all; }
+  .wn-meta { margin-left: auto; text-align: right; flex: none; }
+  .wn-count { font-size: .74rem; color: var(--bad); font-weight: 700; }
+  .wn-grad { font-size: .7rem; color: var(--ink-soft); }
+  .wn-del { background: none; border: none; color: var(--ink-soft); cursor: pointer; font-size: .95rem; padding: 4px; }
+  .hint { font-size: .78rem; color: var(--ink-soft); margin-top: 10px; word-break: keep-all; }
+
+  @media (max-width: 420px) {
+    .optgrid { grid-template-columns: 1fr; }
+    .prompt-word { font-size: 2rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bar i { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">VOCA<em>.</em></div>
+    <div class="tagline">Day 17–18 어원 단어 시험</div>
+    <button id="themeBtn" type="button">테마</button>
+  </header>
+
+  <nav>
+    <button id="tab-home" class="on" type="button">학습</button>
+    <button id="tab-history" type="button">기록</button>
+    <button id="tab-wrong" type="button">오답노트<span class="badge" id="wrongBadge" hidden>0</span></button>
+  </nav>
+
+  <!-- ═══ 홈 ═══ -->
+  <section class="view on" id="view-home">
+    <div class="card">
+      <h2>내 현황</h2>
+      <div class="stats">
+        <div class="stat"><b id="stTests">0</b><span>시험 횟수</span></div>
+        <div class="stat"><b id="stAvg">–</b><span>평균 점수</span></div>
+        <div class="stat"><b id="stWrong">0</b><span>오답노트 단어</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>범위 선택</h2>
+      <div class="optgrid" id="scopeGrid">
+        <button class="opt sel" data-scope="17" type="button">Day 17<small>25 단어 · -late / -gest / -fer / -cast / -ject</small></button>
+        <button class="opt" data-scope="18" type="button">Day 18<small>29 단어 · -tract / -treat / -duce / -pel</small></button>
+        <button class="opt" data-scope="all" type="button">전체 (Day 17+18)<small>54 단어 모두</small></button>
+        <button class="opt" data-scope="wrong" type="button">오답노트만<small>틀렸던 단어 집중 공략</small></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>문제 유형</h2>
+      <div class="optgrid" id="modeGrid">
+        <button class="opt sel" data-mode="mc-ek" type="button">객관식 · 뜻 고르기<small>영어 단어 → 우리말 뜻</small></button>
+        <button class="opt" data-mode="mc-ke" type="button">객관식 · 단어 고르기<small>우리말 뜻 → 영어 단어</small></button>
+        <button class="opt" data-mode="type" type="button">주관식 · 철자 쓰기<small>우리말 뜻 → 영어로 입력</small></button>
+        <button class="opt" data-mode="mix" type="button">혼합<small>세 유형이 무작위로 출제</small></button>
+      </div>
+      <label class="check"><input type="checkbox" id="includeWrong" checked> 오답노트 단어를 이번 시험에 포함 (자동 복습)</label>
+    </div>
+
+    <button class="startBtn" id="startBtn" type="button">시험 시작 →</button>
+    <p class="hint">문제는 무작위 순서로 출제되고, 틀린 문제는 그 시험 안에서 맞힐 때까지 다시 나옵니다. 첫 시도에서 틀린 단어는 오답노트에 저장되어 다음 시험에도 포함됩니다.</p>
+  </section>
+
+  <!-- ═══ 퀴즈 ═══ -->
+  <section class="view" id="view-quiz">
+    <div class="qtop"><span>남은 문제 <b id="qLeft">0</b></span><span>완료 <b id="qDone">0</b> / <b id="qTotal">0</b></span></div>
+    <div class="bar"><i id="qBar" style="width:0%"></i></div>
+    <div class="card">
+      <span class="qtype" id="qType">객관식</span>
+      <div id="qPrompt"></div>
+      <div class="choices" id="qChoices"></div>
+      <div class="typebox" id="qTypebox" hidden>
+        <input id="qInput" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="영어 철자를 입력하세요">
+        <button id="qSubmit" type="button">확인</button>
+      </div>
+      <div class="feedback" id="qFeedback"></div>
+      <button class="nextBtn" id="qNext" type="button">다음 문제 →</button>
+    </div>
+    <button class="quitBtn" id="qQuit" type="button">시험 그만두기</button>
+  </section>
+
+  <!-- ═══ 결과 ═══ -->
+  <section class="view" id="view-result">
+    <div class="card">
+      <div class="score-big"><b id="rPct">0<small>점</small></b><p id="rDetail"></p></div>
+      <div class="grade" id="rGrade"></div>
+    </div>
+    <div class="card" id="rWrongCard">
+      <h2>이번에 틀린 단어 <span id="rWrongCount"></span></h2>
+      <div class="wrong-list" id="rWrongList"></div>
+    </div>
+    <div class="btnrow">
+      <button id="rHome" type="button">홈으로</button>
+      <button id="rRetry" class="primary" type="button">같은 조건으로 다시</button>
+    </div>
+  </section>
+
+  <!-- ═══ 기록 ═══ -->
+  <section class="view" id="view-history">
+    <div class="card">
+      <h2>성적 기록</h2>
+      <div id="histWrap"></div>
+      <button class="danger" id="histClear" type="button">기록 전체 삭제</button>
+    </div>
+  </section>
+
+  <!-- ═══ 오답노트 ═══ -->
+  <section class="view" id="view-wrong">
+    <div class="card">
+      <h2>오답노트</h2>
+      <div id="wnWrap"></div>
+      <p class="hint">오답노트 단어는 시험에서 <b>첫 시도로 2번 연속</b> 맞히면 자동으로 졸업(삭제)됩니다.</p>
+      <button class="danger" id="wnClear" type="button">오답노트 비우기</button>
+    </div>
+  </section>
+</div>
+
+<script src="words.js"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const KEY_WRONG = "voca_wrong_v1";
+  const KEY_HIST = "voca_hist_v1";
+  const KEY_THEME = "voca_theme";
+  const GRADUATE_STREAK = 2;
+
+  const byWord = {};
+  WORDS.forEach((w) => { byWord[w.word] = w; });
+
+  // ── storage ──
+  const load = (k, fb) => { try { return JSON.parse(localStorage.getItem(k)) ?? fb; } catch { return fb; } };
+  const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+  let wrongDB = load(KEY_WRONG, {});   // { word: {wrong, streak, last} }
+  let history = load(KEY_HIST, []);    // [{date, scope, mode, total, correct, pct, wrong:[]}]
+
+  // ── theme ──
+  const savedTheme = localStorage.getItem(KEY_THEME);
+  if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+  $("themeBtn").onclick = () => {
+    const cur = document.documentElement.dataset.theme ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = cur === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem(KEY_THEME, next);
+  };
+
+  // ── tabs / views ──
+  const views = ["home", "quiz", "result", "history", "wrong"];
+  function show(v) {
+    views.forEach((x) => $("view-" + x).classList.toggle("on", x === v));
+    ["home", "history", "wrong"].forEach((x) =>
+      $("tab-" + x).classList.toggle("on", x === v));
+    if (v === "home") renderHome();
+    if (v === "history") renderHistory();
+    if (v === "wrong") renderWrongNote();
+  }
+  $("tab-home").onclick = () => show("home");
+  $("tab-history").onclick = () => show("history");
+  $("tab-wrong").onclick = () => show("wrong");
+
+  // ── option selection ──
+  let scope = "17", mode = "mc-ek";
+  $("scopeGrid").addEventListener("click", (e) => {
+    const b = e.target.closest(".opt"); if (!b) return;
+    scope = b.dataset.scope;
+    [...$("scopeGrid").children].forEach((x) => x.classList.toggle("sel", x === b));
+  });
+  $("modeGrid").addEventListener("click", (e) => {
+    const b = e.target.closest(".opt"); if (!b) return;
+    mode = b.dataset.mode;
+    [...$("modeGrid").children].forEach((x) => x.classList.toggle("sel", x === b));
+  });
+
+  // ── helpers ──
+  const shuffle = (a) => {
+    const r = a.slice();
+    for (let i = r.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [r[i], r[j]] = [r[j], r[i]];
+    }
+    return r;
+  };
+  const pick = (a, n) => shuffle(a).slice(0, n);
+  const scopeLabel = { "17": "Day 17", "18": "Day 18", "all": "Day 17+18", "wrong": "오답노트" };
+  const modeLabel = { "mc-ek": "객관식(뜻)", "mc-ke": "객관식(단어)", "type": "주관식", "mix": "혼합" };
+
+  function updateBadge() {
+    const n = Object.keys(wrongDB).length;
+    $("wrongBadge").hidden = n === 0;
+    $("wrongBadge").textContent = n;
+  }
+
+  // ── home render ──
+  function renderHome() {
+    $("stTests").textContent = history.length;
+    $("stAvg").textContent = history.length
+      ? Math.round(history.reduce((s, h) => s + h.pct, 0) / history.length)
+      : "–";
+    $("stWrong").textContent = Object.keys(wrongDB).length;
+    updateBadge();
+  }
+
+  // ── quiz state ──
+  let queue = [], totalUnique = 0, doneCount = 0, retryTotal = 0;
+  let firstTry = {}, sessionWrong = new Set(), cur = null, locked = false;
+
+  function buildPool() {
+    let pool;
+    if (scope === "all") pool = WORDS.slice();
+    else if (scope === "wrong") pool = Object.keys(wrongDB).map((w) => byWord[w]).filter(Boolean);
+    else pool = WORDS.filter((w) => w.day === Number(scope));
+    if (scope !== "wrong" && $("includeWrong").checked) {
+      Object.keys(wrongDB).forEach((w) => {
+        if (byWord[w] && !pool.includes(byWord[w])) pool.push(byWord[w]);
+      });
+    }
+    return pool;
+  }
+
+  function resolveMode() {
+    if (mode !== "mix") return mode;
+    return ["mc-ek", "mc-ke", "type"][Math.floor(Math.random() * 3)];
+  }
+
+  function startQuiz() {
+    const pool = buildPool();
+    if (!pool.length) { alert("출제할 단어가 없습니다. 오답노트가 비어 있어요!"); return; }
+    queue = shuffle(pool).map((w) => ({ w, qmode: resolveMode(), retry: false }));
+    totalUnique = pool.length;
+    doneCount = 0; retryTotal = 0;
+    firstTry = {}; sessionWrong = new Set();
+    show("quiz");
+    nextQuestion();
+  }
+  $("startBtn").onclick = startQuiz;
+
+  function requeue(item) {
+    // 최소 2문제 뒤 ~ 큐 끝 사이 무작위 위치에 재삽입
+    const min = Math.min(2, queue.length);
+    const pos = min + Math.floor(Math.random() * (queue.length - min + 1));
+    queue.splice(pos, 0, { w: item.w, qmode: resolveMode(), retry: true });
+  }
+
+  function nextQuestion() {
+    if (!queue.length) { endQuiz(); return; }
+    cur = queue.shift();
+    locked = false;
+    const w = cur.w;
+    const fb = $("qFeedback");
+    fb.className = "feedback"; fb.textContent = "";
+    $("qNext").style.display = "none";
+    $("qLeft").textContent = queue.length + 1;
+    $("qDone").textContent = doneCount;
+    $("qTotal").textContent = totalUnique;
+    $("qBar").style.width = (doneCount / totalUnique * 100) + "%";
+
+    const t = $("qType");
+    if (cur.retry) { t.textContent = "다시 도전 · 맞힐 때까지"; t.className = "qtype retry"; }
+    else {
+      t.className = "qtype";
+      t.textContent = { "mc-ek": "객관식 · 뜻 고르기", "mc-ke": "객관식 · 단어 고르기", "type": "주관식 · 철자 쓰기" }[cur.qmode];
+    }
+
+    const prompt = $("qPrompt"), choices = $("qChoices"), typebox = $("qTypebox");
+    choices.innerHTML = ""; typebox.hidden = true;
+
+    if (cur.qmode === "mc-ek") {
+      prompt.innerHTML = `<div class="prompt-word"></div><div class="prompt-sub">Day ${w.day} · ${w.num}번 — 알맞은 뜻을 고르세요</div>`;
+      prompt.querySelector(".prompt-word").textContent = w.word;
+      const opts = shuffle([w.meaning, ...pick(WORDS.filter((x) => x.word !== w.word).map((x) => x.meaning), 3)]);
+      opts.forEach((m, i) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "choice";
+        const n = document.createElement("span"); n.className = "num"; n.textContent = i + 1;
+        const s = document.createElement("span"); s.textContent = m;
+        b.append(n, s);
+        b.onclick = () => answer(m === w.meaning, b, w.meaning);
+        choices.appendChild(b);
+      });
+    } else if (cur.qmode === "mc-ke") {
+      prompt.innerHTML = `<div class="prompt-meaning"></div><div class="prompt-sub">알맞은 영어 단어를 고르세요</div>`;
+      prompt.querySelector(".prompt-meaning").textContent = w.meaning;
+      const opts = shuffle([w.word, ...pick(WORDS.filter((x) => x.word !== w.word).map((x) => x.word), 3)]);
+      opts.forEach((word, i) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "choice en";
+        const n = document.createElement("span"); n.className = "num"; n.textContent = i + 1;
+        const s = document.createElement("span"); s.textContent = word;
+        b.append(n, s);
+        b.onclick = () => answer(word === w.word, b, w.word);
+        choices.appendChild(b);
+      });
+    } else {
+      prompt.innerHTML = `<div class="prompt-meaning"></div><div class="prompt-sub">이 뜻의 영어 단어를 입력하세요 (철자 정확히)</div>`;
+      prompt.querySelector(".prompt-meaning").textContent = w.meaning;
+      typebox.hidden = false;
+      $("qInput").value = "";
+      $("qInput").disabled = false; $("qSubmit").disabled = false;
+      setTimeout(() => $("qInput").focus(), 50);
+    }
+  }
+
+  function answer(ok, btn, correctText) {
+    if (locked) return;
+    locked = true;
+    const w = cur.w;
+    if (!(w.word in firstTry)) firstTry[w.word] = ok;
+
+    [...$("qChoices").children].forEach((b) => {
+      b.disabled = true;
+      const txt = b.lastChild.textContent;
+      if (txt === correctText) b.classList.add("correct");
+    });
+    if (btn && !ok) btn.classList.add("wrong");
+
+    const fb = $("qFeedback");
+    if (ok) {
+      doneCount++;
+      fb.className = "feedback good";
+      fb.textContent = cur.retry ? "정답! 이제 통과했어요 ✓" : "정답 ✓";
+      $("qBar").style.width = (doneCount / totalUnique * 100) + "%";
+      setTimeout(nextQuestion, 700);
+    } else {
+      sessionWrong.add(w.word);
+      retryTotal++;
+      requeue(cur);
+      fb.className = "feedback bad";
+      fb.innerHTML = `<b>오답!</b> 정답: <b class="ans"></b> — <span></span><br>이 문제는 뒤에서 다시 나옵니다.`;
+      fb.querySelector(".ans").textContent = w.word;
+      fb.querySelector("span:not(.ans)").textContent = w.meaning;
+      $("qNext").style.display = "block";
+      $("qNext").focus();
+    }
+  }
+
+  function answerTyped() {
+    if (locked) return;
+    const v = $("qInput").value.trim().toLowerCase();
+    if (!v) { $("qInput").focus(); return; }
+    locked = true;
+    const w = cur.w;
+    const ok = v === w.word.toLowerCase();
+    if (!(w.word in firstTry)) firstTry[w.word] = ok;
+    $("qInput").disabled = true; $("qSubmit").disabled = true;
+
+    const fb = $("qFeedback");
+    if (ok) {
+      doneCount++;
+      fb.className = "feedback good";
+      fb.textContent = cur.retry ? "정답! 이제 통과했어요 ✓" : "정답 ✓";
+      $("qBar").style.width = (doneCount / totalUnique * 100) + "%";
+      setTimeout(nextQuestion, 700);
+    } else {
+      sessionWrong.add(w.word);
+      retryTotal++;
+      requeue(cur);
+      fb.className = "feedback bad";
+      fb.innerHTML = `<b>오답!</b> 정답: <b class="ans"></b><br>이 문제는 뒤에서 다시 나옵니다.`;
+      fb.querySelector(".ans").textContent = w.word;
+      $("qNext").style.display = "block";
+      $("qNext").focus();
+    }
+  }
+  $("qSubmit").onclick = answerTyped;
+  $("qInput").addEventListener("keydown", (e) => { if (e.key === "Enter") answerTyped(); });
+  $("qNext").onclick = nextQuestion;
+  $("qQuit").onclick = () => { if (confirm("시험을 그만둘까요? 이번 시험 기록은 저장되지 않습니다.")) show("home"); };
+
+  // 숫자키 1-4로 객관식 선택
+  document.addEventListener("keydown", (e) => {
+    if (!$("view-quiz").classList.contains("on")) return;
+    if (!$("qTypebox").hidden) return;
+    const n = Number(e.key);
+    if (n >= 1 && n <= 4) {
+      const b = $("qChoices").children[n - 1];
+      if (b && !b.disabled) b.click();
+    }
+  });
+
+  // ── end quiz ──
+  function endQuiz() {
+    const total = totalUnique;
+    const correct = Object.values(firstTry).filter(Boolean).length;
+    const pct = Math.round(correct / total * 100);
+
+    // 오답 DB 갱신
+    Object.entries(firstTry).forEach(([word, ok]) => {
+      if (!ok) {
+        const e = wrongDB[word] || { wrong: 0, streak: 0 };
+        e.wrong++; e.streak = 0; e.last = new Date().toISOString().slice(0, 10);
+        wrongDB[word] = e;
+      } else if (wrongDB[word]) {
+        wrongDB[word].streak++;
+        if (wrongDB[word].streak >= GRADUATE_STREAK) delete wrongDB[word]; // 졸업!
+      }
+    });
+    save(KEY_WRONG, wrongDB);
+
+    history.unshift({
+      date: new Date().toISOString().slice(0, 16).replace("T", " "),
+      scope: scopeLabel[scope], mode: modeLabel[mode],
+      total, correct, pct, wrong: [...sessionWrong],
+    });
+    save(KEY_HIST, history);
+
+    $("rPct").innerHTML = pct + "<small>점</small>";
+    $("rDetail").textContent = `첫 시도 정답 ${correct} / ${total} · 재도전 ${retryTotal}회`;
+    $("rGrade").textContent =
+      pct === 100 ? "💯 완벽해요! 전부 한 번에 맞혔어요" :
+      pct >= 80 ? "👍 잘했어요! 틀린 단어만 다시 잡으면 끝" :
+      pct >= 50 ? "📖 절반은 왔어요. 오답노트로 반복하세요" :
+      "🔥 처음엔 다 그래요. 반복이 답입니다";
+
+    const wl = $("rWrongList");
+    wl.innerHTML = "";
+    if (sessionWrong.size === 0) {
+      $("rWrongCard").style.display = "none";
+    } else {
+      $("rWrongCard").style.display = "";
+      $("rWrongCount").textContent = `(${sessionWrong.size}개 → 오답노트 저장됨)`;
+      [...sessionWrong].forEach((word) => {
+        const d = document.createElement("div");
+        d.className = "witem";
+        const a = document.createElement("span"); a.className = "w"; a.textContent = word;
+        const b = document.createElement("span"); b.className = "m"; b.textContent = byWord[word].meaning;
+        d.append(a, b);
+        wl.appendChild(d);
+      });
+    }
+    updateBadge();
+    show("result");
+  }
+  $("rHome").onclick = () => show("home");
+  $("rRetry").onclick = startQuiz;
+
+  // ── history render ──
+  function renderHistory() {
+    const el = $("histWrap");
+    if (!history.length) { el.innerHTML = `<div class="empty">아직 시험 기록이 없어요.<br>첫 시험을 시작해 보세요!</div>`; return; }
+    const rows = history.map((h) =>
+      `<tr><td>${h.date}</td><td>${h.scope}</td><td>${h.mode}</td><td>${h.correct}/${h.total}</td><td class="pct">${h.pct}점</td></tr>`
+    ).join("");
+    el.innerHTML = `<div style="overflow-x:auto"><table><thead><tr><th>날짜</th><th>범위</th><th>유형</th><th>정답</th><th>점수</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  $("histClear").onclick = () => {
+    if (confirm("성적 기록을 모두 삭제할까요?")) { history = []; save(KEY_HIST, history); renderHistory(); renderHome(); }
+  };
+
+  // ── wrong note render ──
+  function renderWrongNote() {
+    const el = $("wnWrap");
+    const keys = Object.keys(wrongDB).sort((a, b) => wrongDB[b].wrong - wrongDB[a].wrong);
+    updateBadge();
+    if (!keys.length) { el.innerHTML = `<div class="empty">오답노트가 비어 있어요 🎉</div>`; return; }
+    el.innerHTML = "";
+    keys.forEach((word) => {
+      const e = wrongDB[word], w = byWord[word];
+      const d = document.createElement("div");
+      d.className = "wn-item";
+      const left = document.createElement("div");
+      const ww = document.createElement("div"); ww.className = "wn-word"; ww.textContent = word;
+      const wm = document.createElement("div"); wm.className = "wn-mean"; wm.textContent = w ? w.meaning : "";
+      left.append(ww, wm);
+      const meta = document.createElement("div"); meta.className = "wn-meta";
+      meta.innerHTML = `<div class="wn-count">${e.wrong}회 틀림</div><div class="wn-grad">졸업까지 ${GRADUATE_STREAK - e.streak}번 연속 정답</div>`;
+      const del = document.createElement("button"); del.className = "wn-del"; del.textContent = "✕"; del.title = "삭제";
+      del.onclick = () => { delete wrongDB[word]; save(KEY_WRONG, wrongDB); renderWrongNote(); };
+      d.append(left, meta, del);
+      el.appendChild(d);
+    });
+  }
+  $("wnClear").onclick = () => {
+    if (confirm("오답노트를 모두 비울까요?")) { wrongDB = {}; save(KEY_WRONG, wrongDB); renderWrongNote(); }
+  };
+
+  renderHome();
+})();
+</script>
+</body>
+</html>

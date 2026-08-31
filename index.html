@@ -209,6 +209,20 @@
   .wn-del { background: none; border: none; color: var(--ink-soft); cursor: pointer; font-size: .95rem; padding: 4px; }
   .hint { font-size: .78rem; color: var(--ink-soft); margin-top: 10px; word-break: keep-all; }
 
+  /* ── cloud sync ── */
+  .sync-status { text-transform: none; letter-spacing: 0; margin-left: 6px; font-weight: 700; }
+  .sync-status.ok { color: var(--good); }
+  .sync-status.off { color: var(--amber); }
+  .sync-row { display: flex; gap: 8px; }
+  .sync-row input {
+    flex: 1; min-width: 0; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 10px;
+    font-family: var(--serif); font-size: 1.05rem; letter-spacing: .15em; background: var(--card); color: var(--ink);
+  }
+  .sync-row button {
+    padding: 0 18px; border-radius: 10px; border: 1.5px solid var(--line);
+    background: var(--card); color: var(--ink); font-weight: 700; cursor: pointer; font-family: var(--sans);
+  }
+
   @media (max-width: 420px) {
     .optgrid { grid-template-columns: 1fr; }
     .prompt-word { font-size: 2rem; }
@@ -266,6 +280,15 @@
 
     <button class="startBtn" id="startBtn" type="button">시험 시작 →</button>
     <p class="hint">문제는 무작위 순서로 출제되고, 틀린 문제는 그 시험 안에서 맞힐 때까지 다시 나옵니다. 첫 시도에서 틀린 단어는 오답노트에 저장되어 다음 시험에도 포함됩니다.</p>
+
+    <div class="card">
+      <h2>클라우드 동기화 <span class="sync-status" id="syncStatus">연결 중…</span></h2>
+      <div class="sync-row">
+        <input id="syncInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="동기화 코드">
+        <button id="syncApply" type="button">적용</button>
+      </div>
+      <p class="hint">이 코드가 내 기록의 열쇠입니다. 폰·PC 등 다른 기기에서 같은 코드를 입력하면 성적과 오답노트가 하나로 이어집니다.</p>
+    </div>
   </section>
 
   <!-- ═══ 퀴즈 ═══ -->
@@ -334,13 +357,129 @@
   const GRADUATE_STREAK = 2;
 
   const byWord = {};
-  WORDS.forEach((w) => { byWord[w.word] = w; });
+  const indexWords = () => { Object.keys(byWord).forEach((k) => delete byWord[k]); WORDS.forEach((w) => { byWord[w.word] = w; }); };
+  indexWords();
 
   // ── storage ──
   const load = (k, fb) => { try { return JSON.parse(localStorage.getItem(k)) ?? fb; } catch { return fb; } };
   const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
   let wrongDB = load(KEY_WRONG, {});   // { word: {wrong, streak, last} }
   let history = load(KEY_HIST, []);    // [{date, scope, mode, total, correct, pct, wrong:[]}]
+
+  // ── cloud (Supabase) ──
+  const SB_URL = "https://nzsnuyodgmfwlrlrtped.supabase.co";
+  const SB_KEY = "sb_publishable_VWcRF8Ny8Rn-VK38FMtShA_ltH_ZH4Q";
+  const KEY_SYNC = "voca_sync_code";
+  let cloudOK = false;
+  let syncCode = localStorage.getItem(KEY_SYNC);
+  if (!syncCode) {
+    syncCode = Math.random().toString(36).slice(2, 8);
+    localStorage.setItem(KEY_SYNC, syncCode);
+  }
+
+  async function sb(path, opts = {}) {
+    const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+      method: opts.method || "GET",
+      headers: {
+        apikey: SB_KEY,
+        Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/json",
+        ...(opts.prefer ? { Prefer: opts.prefer } : {}),
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    if (!res.ok) throw new Error(res.status + " " + (await res.text()));
+    return res.status === 204 ? null : res.json();
+  }
+
+  function setSync(txt, cls) {
+    const el = $("syncStatus");
+    el.textContent = txt;
+    el.className = "sync-status" + (cls ? " " + cls : "");
+  }
+
+  const histKey = (h) => `${h.date}|${h.scope}|${h.mode}|${h.pct}`;
+
+  async function pushWrongAll() {
+    const rows = Object.entries(wrongDB).map(([word, e]) => ({
+      sync_code: syncCode, word, wrong_count: e.wrong, streak: e.streak, last_wrong: e.last || null,
+    }));
+    if (rows.length)
+      await sb("wrong_notes?on_conflict=sync_code,word", { method: "POST", prefer: "resolution=merge-duplicates", body: rows });
+  }
+  function cloudDeleteWrong(word) {
+    if (cloudOK) sb(`wrong_notes?sync_code=eq.${syncCode}&word=eq.${encodeURIComponent(word)}`, { method: "DELETE" }).catch(() => {});
+  }
+  function cloudPushResult(h) {
+    if (!cloudOK) return;
+    sb("results", {
+      method: "POST",
+      body: {
+        sync_code: syncCode, taken_at: new Date().toISOString(),
+        scope: h.scope, mode: h.mode, total: h.total, correct: h.correct, pct: h.pct, wrong_words: h.wrong,
+      },
+    }).catch(() => {});
+  }
+
+  async function cloudInit() {
+    $("syncInput").value = syncCode;
+    try {
+      // 1) 단어: DB에 단어가 있으면 그것을 사용 (없으면 words.js 사용)
+      const cw = await sb("words?select=day,num,word,meaning&order=day.asc,num.asc");
+      if (cw.length) { WORDS.length = 0; WORDS.push(...cw); indexWords(); }
+      cloudOK = true;
+
+      // 2) 오답노트 병합 (기기 간: 틀린 횟수는 큰 쪽, 졸업 진행도는 낮은 쪽 기준)
+      const notes = await sb(`wrong_notes?select=word,wrong_count,streak,last_wrong&sync_code=eq.${syncCode}`);
+      notes.forEach((n) => {
+        const l = wrongDB[n.word];
+        wrongDB[n.word] = {
+          wrong: Math.max(l ? l.wrong : 0, n.wrong_count),
+          streak: l ? Math.min(l.streak, n.streak) : n.streak,
+          last: [l && l.last, n.last_wrong].filter(Boolean).sort().pop(),
+        };
+      });
+      save(KEY_WRONG, wrongDB);
+      pushWrongAll().catch(() => {});
+
+      // 3) 성적 병합: 클라우드에 없는 로컬 기록은 올리고, 합쳐서 정렬
+      const rows = await sb(`results?select=taken_at,scope,mode,total,correct,pct,wrong_words&sync_code=eq.${syncCode}&order=taken_at.desc&limit=300`);
+      const cloudHist = rows.map((r) => ({
+        date: r.taken_at.slice(0, 16).replace("T", " "),
+        scope: r.scope, mode: r.mode, total: r.total, correct: r.correct, pct: r.pct,
+        wrong: r.wrong_words || [],
+      }));
+      const seen = new Set(cloudHist.map(histKey));
+      const localOnly = history.filter((h) => !seen.has(histKey(h)));
+      localOnly.forEach((h) => {
+        sb("results", {
+          method: "POST",
+          body: {
+            sync_code: syncCode,
+            taken_at: new Date(h.date.replace(" ", "T")).toISOString(),
+            scope: h.scope, mode: h.mode, total: h.total, correct: h.correct, pct: h.pct, wrong_words: h.wrong,
+          },
+        }).catch(() => {});
+      });
+      history = [...cloudHist, ...localOnly].sort((a, b) => b.date.localeCompare(a.date));
+      save(KEY_HIST, history);
+
+      setSync("☁ 연결됨", "ok");
+      renderHome();
+    } catch (e) {
+      cloudOK = false;
+      setSync("오프라인 — 이 기기에만 저장됩니다", "off");
+    }
+  }
+
+  $("syncApply").onclick = () => {
+    const v = $("syncInput").value.trim().toLowerCase();
+    if (!v) return;
+    if (v !== syncCode && confirm(`동기화 코드를 '${v}'(으)로 바꿀까요?\n해당 코드의 기록을 불러와 현재 기기 기록과 합칩니다.`)) {
+      localStorage.setItem(KEY_SYNC, v);
+      location.reload();
+    }
+  };
 
   // ── theme ──
   const savedTheme = localStorage.getItem(KEY_THEME);
@@ -624,6 +763,7 @@
     const pct = Math.round(correct / total * 100);
 
     // 오답 DB 갱신
+    const graduated = [];
     Object.entries(firstTry).forEach(([word, ok]) => {
       if (!ok) {
         const e = wrongDB[word] || { wrong: 0, streak: 0 };
@@ -631,17 +771,25 @@
         wrongDB[word] = e;
       } else if (wrongDB[word]) {
         wrongDB[word].streak++;
-        if (wrongDB[word].streak >= GRADUATE_STREAK) delete wrongDB[word]; // 졸업!
+        if (wrongDB[word].streak >= GRADUATE_STREAK) { delete wrongDB[word]; graduated.push(word); } // 졸업!
       }
     });
     save(KEY_WRONG, wrongDB);
 
-    history.unshift({
+    const entry = {
       date: new Date().toISOString().slice(0, 16).replace("T", " "),
       scope: scopeLabel[scope], mode: modeLabel[mode],
       total, correct, pct, wrong: [...sessionWrong],
-    });
+    };
+    history.unshift(entry);
     save(KEY_HIST, history);
+
+    // 클라우드 반영
+    cloudPushResult(entry);
+    if (cloudOK) {
+      pushWrongAll().catch(() => {});
+      graduated.forEach(cloudDeleteWrong);
+    }
 
     $("rPct").innerHTML = pct + "<small>점</small>";
     $("rDetail").textContent = `첫 시도 정답 ${correct} / ${total} · 재도전 ${retryTotal}회`;
@@ -683,7 +831,11 @@
     el.innerHTML = `<div style="overflow-x:auto"><table><thead><tr><th>날짜</th><th>범위</th><th>유형</th><th>정답</th><th>점수</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   $("histClear").onclick = () => {
-    if (confirm("성적 기록을 모두 삭제할까요?")) { history = []; save(KEY_HIST, history); renderHistory(); renderHome(); }
+    if (confirm("성적 기록을 모두 삭제할까요?")) {
+      history = []; save(KEY_HIST, history);
+      if (cloudOK) sb(`results?sync_code=eq.${syncCode}`, { method: "DELETE" }).catch(() => {});
+      renderHistory(); renderHome();
+    }
   };
 
   // ── wrong note render ──
@@ -704,16 +856,21 @@
       const meta = document.createElement("div"); meta.className = "wn-meta";
       meta.innerHTML = `<div class="wn-count">${e.wrong}회 틀림</div><div class="wn-grad">졸업까지 ${GRADUATE_STREAK - e.streak}번 연속 정답</div>`;
       const del = document.createElement("button"); del.className = "wn-del"; del.textContent = "✕"; del.title = "삭제";
-      del.onclick = () => { delete wrongDB[word]; save(KEY_WRONG, wrongDB); renderWrongNote(); };
+      del.onclick = () => { delete wrongDB[word]; save(KEY_WRONG, wrongDB); cloudDeleteWrong(word); renderWrongNote(); };
       d.append(left, meta, del);
       el.appendChild(d);
     });
   }
   $("wnClear").onclick = () => {
-    if (confirm("오답노트를 모두 비울까요?")) { wrongDB = {}; save(KEY_WRONG, wrongDB); renderWrongNote(); }
+    if (confirm("오답노트를 모두 비울까요?")) {
+      wrongDB = {}; save(KEY_WRONG, wrongDB);
+      if (cloudOK) sb(`wrong_notes?sync_code=eq.${syncCode}`, { method: "DELETE" }).catch(() => {});
+      renderWrongNote();
+    }
   };
 
   renderHome();
+  cloudInit();
 })();
 </script>
 </body>

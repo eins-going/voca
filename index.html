@@ -24,24 +24,7 @@
     --serif: Georgia, "Times New Roman", serif;
     --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Pretendard, "Malgun Gothic", sans-serif;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --paper: #14181F;
-      --card: #1C222C;
-      --ink: #E8EAF0;
-      --ink-soft: #9AA3B2;
-      --line: #2C3440;
-      --accent: #7C9BFF;
-      --accent-soft: #223052;
-      --good: #3DBE96;
-      --good-soft: #1B3730;
-      --bad: #E4736F;
-      --bad-soft: #40252A;
-      --amber: #E2B15C;
-      --amber-soft: #3B3120;
-      --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
-    }
-  }
+  /* 기본은 흰 바탕(라이트). 다크는 '테마' 버튼으로만 전환 */
   :root[data-theme="light"] {
     --paper: #F7F6F1; --card: #FFFFFF; --ink: #1E2530; --ink-soft: #5B6270;
     --line: #E3E1D8; --accent: #2B55D4; --accent-soft: #EBF0FF;
@@ -65,12 +48,12 @@
     line-height: 1.55;
     min-height: 100vh;
   }
-  .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 56px; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 12px 16px 40px; }
 
   /* ── header ── */
   header {
     display: flex; align-items: baseline; gap: 10px;
-    padding: 8px 0 18px;
+    padding: 4px 0 10px;
   }
   .logo { font-family: var(--serif); font-size: 1.7rem; font-weight: 700; letter-spacing: .5px; }
   .logo em { font-style: normal; color: var(--accent); }
@@ -81,7 +64,7 @@
   }
 
   /* ── tabs ── */
-  nav { display: flex; gap: 6px; margin-bottom: 20px; }
+  nav { display: flex; gap: 6px; margin-bottom: 12px; }
   nav button {
     flex: 1; padding: 9px 0; border: 1px solid var(--line); background: var(--card);
     border-radius: 10px; font-size: .9rem; color: var(--ink-soft); cursor: pointer; font-family: var(--sans);
@@ -96,32 +79,32 @@
   .view.on { display: block; }
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-    padding: 20px; box-shadow: var(--shadow); margin-bottom: 14px;
+    padding: 13px 16px; box-shadow: var(--shadow); margin-bottom: 10px;
   }
-  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-soft); margin-bottom: 12px; font-weight: 600; }
+  h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-soft); margin-bottom: 8px; font-weight: 600; }
 
   /* ── home: stats ── */
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .stat { text-align: center; padding: 6px 0; }
-  .stat b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; font-family: var(--serif); }
+  .stat { text-align: center; padding: 0; }
+  .stat b { display: block; font-size: 1.3rem; font-variant-numeric: tabular-nums; font-family: var(--serif); }
   .stat span { font-size: .75rem; color: var(--ink-soft); }
 
   /* ── home: options ── */
   .optgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .opt {
-    border: 1.5px solid var(--line); border-radius: 10px; padding: 12px 14px;
+    border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 12px;
     cursor: pointer; background: var(--card); text-align: left; font-family: var(--sans); color: var(--ink);
   }
   .opt small { display: block; color: var(--ink-soft); font-size: .75rem; margin-top: 2px; }
   .opt.sel { border-color: var(--accent); background: var(--accent-soft); }
   .opt.sel small { color: var(--accent); }
   .check {
-    display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: .88rem; color: var(--ink-soft);
+    display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .88rem; color: var(--ink-soft);
     cursor: pointer; user-select: none;
   }
   .check input { width: 17px; height: 17px; accent-color: var(--accent); }
   .startBtn {
-    width: 100%; margin-top: 6px; padding: 15px; font-size: 1.05rem; font-weight: 700;
+    width: 100%; margin-top: 4px; padding: 13px; font-size: 1.02rem; font-weight: 700;
     background: var(--accent); color: #fff; border: none; border-radius: 12px; cursor: pointer; font-family: var(--sans);
   }
   .startBtn:active { transform: translateY(1px); }
@@ -273,9 +256,9 @@
     <div class="card">
       <h2>문제 유형</h2>
       <div class="optgrid" id="modeGrid">
-        <button class="opt sel" data-mode="mc-ek" type="button">객관식 · 뜻 고르기<small>영어 단어 → 우리말 뜻</small></button>
+        <button class="opt sel" data-mode="type" type="button">주관식 · 철자 쓰기<small>우리말 뜻 → 영어로 입력</small></button>
+        <button class="opt" data-mode="mc-ek" type="button">객관식 · 뜻 고르기<small>영어 단어 → 우리말 뜻</small></button>
         <button class="opt" data-mode="mc-ke" type="button">객관식 · 단어 고르기<small>우리말 뜻 → 영어 단어</small></button>
-        <button class="opt" data-mode="type" type="button">주관식 · 철자 쓰기<small>우리말 뜻 → 영어로 입력</small></button>
         <button class="opt" data-mode="mix" type="button">혼합<small>세 유형이 무작위로 출제</small></button>
       </div>
       <label class="check"><input type="checkbox" id="includeWrong" checked> 오답노트 단어를 이번 시험에 포함 (자동 복습)</label>
@@ -363,8 +346,7 @@
   const savedTheme = localStorage.getItem(KEY_THEME);
   if (savedTheme) document.documentElement.dataset.theme = savedTheme;
   $("themeBtn").onclick = () => {
-    const cur = document.documentElement.dataset.theme ||
-      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const cur = document.documentElement.dataset.theme || "light";
     const next = cur === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     localStorage.setItem(KEY_THEME, next);
@@ -385,7 +367,7 @@
   $("tab-wrong").onclick = () => show("wrong");
 
   // ── option selection ──
-  let scope = "17", mode = "mc-ek";
+  let scope = "17", mode = "type";
   $("scopeGrid").addEventListener("click", (e) => {
     const b = e.target.closest(".opt"); if (!b) return;
     scope = b.dataset.scope;

@@ -4,7 +4,7 @@
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization",
 };
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json; charset=utf-8", ...CORS } });
@@ -33,12 +33,60 @@ function pcmToWav(pcm, sampleRate) {
   return out;
 }
 
+// ── 인증 헬퍼 ──
+const enc = new TextEncoder();
+const toHex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+const fromHex = (hex) => Uint8Array.from(hex.match(/.{2}/g).map((h) => parseInt(h, 16)));
+
+async function hashPw(pw, saltHex) {
+  const key = await crypto.subtle.importKey("raw", enc.encode(pw), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: fromHex(saltHex), iterations: 100000 }, key, 256);
+  return toHex(bits);
+}
+async function hmac(data, secret) {
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return toHex(await crypto.subtle.sign("HMAC", key, enc.encode(data)));
+}
+async function makeToken(id, env) {
+  const exp = Date.now() + 90 * 24 * 3600 * 1000; // 90일
+  return `${id}.${exp}.${await hmac(`${id}.${exp}`, env.SESSION_SECRET)}`;
+}
+async function userFromToken(req, env) {
+  const t = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  const [id, exp, sig] = t.split(".");
+  if (!id || !exp || !sig || Number(exp) < Date.now()) return null;
+  return (await hmac(`${id}.${exp}`, env.SESSION_SECRET)) === sig ? id : null;
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
     const url = new URL(req.url);
     const p = url.pathname;
     try {
+      // ── 회원가입 / 로그인 ──
+      if (p === "/api/register" && req.method === "POST") {
+        const { id, pw } = await req.json();
+        const idL = String(id || "").trim().toLowerCase();
+        if (!/^[a-z0-9_-]{3,20}$/.test(idL)) return json({ error: "아이디는 영문/숫자 3~20자로 만들어 주세요" }, 400);
+        if (!pw || String(pw).length < 4) return json({ error: "비밀번호는 4자 이상으로 해주세요" }, 400);
+        const exists = await env.DB.prepare("SELECT id FROM users WHERE id=?1").bind(idL).first();
+        if (exists) return json({ error: "이미 사용 중인 아이디입니다" }, 409);
+        const salt = toHex(crypto.getRandomValues(new Uint8Array(16)));
+        await env.DB.prepare("INSERT INTO users (id, pw_hash, salt) VALUES (?1,?2,?3)")
+          .bind(idL, await hashPw(String(pw), salt), salt).run();
+        return json({ ok: true, id: idL, token: await makeToken(idL, env) });
+      }
+      if (p === "/api/login" && req.method === "POST") {
+        const { id, pw } = await req.json();
+        const idL = String(id || "").trim().toLowerCase();
+        const u = await env.DB.prepare("SELECT id, pw_hash, salt FROM users WHERE id=?1").bind(idL).first();
+        if (!u || (await hashPw(String(pw || ""), u.salt)) !== u.pw_hash)
+          return json({ error: "아이디 또는 비밀번호가 맞지 않습니다" }, 401);
+        return json({ ok: true, id: idL, token: await makeToken(idL, env) });
+      }
+
       // ── 단어 ──
       if (p === "/api/words" && req.method === "GET") {
         const { results } = await env.DB.prepare("SELECT day, num, word, meaning FROM words ORDER BY day, num").all();
@@ -57,55 +105,52 @@ export default {
         return json({ ok: true, count: words.length });
       }
 
-      // ── 성적 + 오답 상태 (한 번에) ──
-      if (p === "/api/state" && req.method === "GET") {
-        const code = url.searchParams.get("code");
-        if (!code) return json({ error: "code 필요" }, 400);
-        const wrong = await env.DB.prepare(
-          "SELECT word, wrong_count, streak, last_wrong FROM wrong_notes WHERE sync_code=?1"
-        ).bind(code).all();
-        const results = await env.DB.prepare(
-          "SELECT taken_at, scope, mode, total, correct, pct, wrong_words FROM results WHERE sync_code=?1 ORDER BY taken_at DESC LIMIT 300"
-        ).bind(code).all();
-        return json({
-          wrong: wrong.results,
-          results: results.results.map((r) => ({ ...r, wrong_words: JSON.parse(r.wrong_words || "[]") })),
-        });
-      }
+      // ── 성적/오답 라우트: 로그인 필수 (토큰의 아이디가 기록의 주인) ──
+      if (["/api/state", "/api/results", "/api/wrong"].includes(p)) {
+        const uid = await userFromToken(req, env);
+        if (!uid) return json({ error: "로그인이 필요합니다" }, 401);
 
-      // ── 성적 ──
-      if (p === "/api/results" && req.method === "POST") {
-        const b = await req.json();
-        if (!b.sync_code) return json({ error: "sync_code 필요" }, 400);
-        await env.DB.prepare(
-          "INSERT INTO results (sync_code, taken_at, scope, mode, total, correct, pct, wrong_words) VALUES (?,?,?,?,?,?,?,?)"
-        ).bind(b.sync_code, b.taken_at, b.scope, b.mode, b.total, b.correct, b.pct, JSON.stringify(b.wrong_words || [])).run();
-        return json({ ok: true });
-      }
-      if (p === "/api/results" && req.method === "DELETE") {
-        await env.DB.prepare("DELETE FROM results WHERE sync_code=?1").bind(url.searchParams.get("code")).run();
-        return json({ ok: true });
-      }
-
-      // ── 오답노트 ──
-      if (p === "/api/wrong" && req.method === "POST") {
-        const { sync_code, rows } = await req.json();
-        if (!sync_code || !Array.isArray(rows)) return json({ error: "잘못된 요청" }, 400);
-        if (rows.length) {
-          const stmt = env.DB.prepare(
-            "INSERT INTO wrong_notes (sync_code, word, wrong_count, streak, last_wrong) VALUES (?1,?2,?3,?4,?5) " +
-            "ON CONFLICT(sync_code, word) DO UPDATE SET wrong_count=?3, streak=?4, last_wrong=?5"
-          );
-          await env.DB.batch(rows.map((r) => stmt.bind(sync_code, r.word, r.wrong_count, r.streak, r.last_wrong || null)));
+        if (p === "/api/state" && req.method === "GET") {
+          const wrong = await env.DB.prepare(
+            "SELECT word, wrong_count, streak, last_wrong FROM wrong_notes WHERE sync_code=?1"
+          ).bind(uid).all();
+          const results = await env.DB.prepare(
+            "SELECT taken_at, scope, mode, total, correct, pct, wrong_words FROM results WHERE sync_code=?1 ORDER BY taken_at DESC LIMIT 300"
+          ).bind(uid).all();
+          return json({
+            wrong: wrong.results,
+            results: results.results.map((r) => ({ ...r, wrong_words: JSON.parse(r.wrong_words || "[]") })),
+          });
         }
-        return json({ ok: true });
-      }
-      if (p === "/api/wrong" && req.method === "DELETE") {
-        const code = url.searchParams.get("code");
-        const word = url.searchParams.get("word");
-        if (word) await env.DB.prepare("DELETE FROM wrong_notes WHERE sync_code=?1 AND word=?2").bind(code, word).run();
-        else await env.DB.prepare("DELETE FROM wrong_notes WHERE sync_code=?1").bind(code).run();
-        return json({ ok: true });
+        if (p === "/api/results" && req.method === "POST") {
+          const b = await req.json();
+          await env.DB.prepare(
+            "INSERT INTO results (sync_code, taken_at, scope, mode, total, correct, pct, wrong_words) VALUES (?,?,?,?,?,?,?,?)"
+          ).bind(uid, b.taken_at, b.scope, b.mode, b.total, b.correct, b.pct, JSON.stringify(b.wrong_words || [])).run();
+          return json({ ok: true });
+        }
+        if (p === "/api/results" && req.method === "DELETE") {
+          await env.DB.prepare("DELETE FROM results WHERE sync_code=?1").bind(uid).run();
+          return json({ ok: true });
+        }
+        if (p === "/api/wrong" && req.method === "POST") {
+          const { rows } = await req.json();
+          if (!Array.isArray(rows)) return json({ error: "잘못된 요청" }, 400);
+          if (rows.length) {
+            const stmt = env.DB.prepare(
+              "INSERT INTO wrong_notes (sync_code, word, wrong_count, streak, last_wrong) VALUES (?1,?2,?3,?4,?5) " +
+              "ON CONFLICT(sync_code, word) DO UPDATE SET wrong_count=?3, streak=?4, last_wrong=?5"
+            );
+            await env.DB.batch(rows.map((r) => stmt.bind(uid, r.word, r.wrong_count, r.streak, r.last_wrong || null)));
+          }
+          return json({ ok: true });
+        }
+        if (p === "/api/wrong" && req.method === "DELETE") {
+          const word = url.searchParams.get("word");
+          if (word) await env.DB.prepare("DELETE FROM wrong_notes WHERE sync_code=?1 AND word=?2").bind(uid, word).run();
+          else await env.DB.prepare("DELETE FROM wrong_notes WHERE sync_code=?1").bind(uid).run();
+          return json({ ok: true });
+        }
       }
 
       // ── 사진 업로드 + Gemini 분석 ──

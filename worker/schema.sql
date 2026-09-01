@@ -35,3 +35,10 @@ CREATE TABLE IF NOT EXISTS photos (
   uploaded_at TEXT NOT NULL,
   day INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  pw_hash TEXT NOT NULL,
+  salt TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

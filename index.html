@@ -289,15 +289,12 @@
   .sync-status { text-transform: none; letter-spacing: 0; margin-left: 6px; font-weight: 700; }
   .sync-status.ok { color: var(--good); }
   .sync-status.off { color: var(--amber); }
-  .sync-row { display: flex; gap: 8px; }
-  .sync-row input {
-    flex: 1; min-width: 0; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 10px;
-    font-family: var(--serif); font-size: 1.05rem; letter-spacing: .15em; background: var(--card); color: var(--ink);
+  .authrow { display: flex; gap: 8px; margin-bottom: 8px; }
+  .authrow input {
+    flex: 1; min-width: 0; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--card); color: var(--ink); font-size: .92rem; font-family: var(--sans);
   }
-  .sync-row button {
-    padding: 0 18px; border-radius: 10px; border: 1.5px solid var(--line);
-    background: var(--card); color: var(--ink); font-weight: 700; cursor: pointer; font-family: var(--sans);
-  }
+  .authrow input:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 
   @media (max-width: 420px) {
     .optgrid { grid-template-columns: 1fr; }
@@ -360,12 +357,22 @@
     <p class="hint">문제는 무작위 순서로 출제되고, 틀린 문제는 그 시험 안에서 맞힐 때까지 다시 나옵니다. 첫 시도에서 틀린 단어는 오답노트에 저장되어 다음 시험에도 포함됩니다.</p>
 
     <div class="card">
-      <h2>클라우드 동기화 <span class="sync-status" id="syncStatus">연결 중…</span></h2>
-      <div class="sync-row">
-        <input id="syncInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="동기화 코드">
-        <button id="syncApply" type="button">적용</button>
+      <h2>클라우드 동기화 <span class="sync-status" id="syncStatus">확인 중…</span></h2>
+      <div id="authForms">
+        <div class="authrow">
+          <input id="authId" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="아이디 (영문/숫자 3~20자)">
+          <input id="authPw" type="password" autocomplete="current-password" placeholder="비밀번호 (4자 이상)">
+        </div>
+        <div class="btnrow">
+          <button id="loginBtn" class="primary" type="button">로그인</button>
+          <button id="regBtn" type="button">회원가입</button>
+        </div>
+        <p class="hint" id="authMsg">로그인하면 성적과 오답노트가 계정에 저장되어 폰·PC 어디서든 이어집니다. 처음이면 아이디·비밀번호를 정하고 "회원가입"을 누르세요.</p>
       </div>
-      <p class="hint">이 코드가 내 기록의 열쇠입니다. 폰·PC 등 다른 기기에서 같은 코드를 입력하면 성적과 오답노트가 하나로 이어집니다.</p>
+      <div id="authInfo" hidden>
+        <p class="hint hint-tight"><b id="authWho"></b>님으로 로그인되어 있습니다. 이 기기의 기록이 계정에 자동으로 합쳐집니다.</p>
+        <button class="danger" id="logoutBtn" type="button">로그아웃</button>
+      </div>
     </div>
   </section>
 
@@ -507,20 +514,19 @@
   let wrongDB = load(KEY_WRONG, {});   // { word: {wrong, streak, last} }
   let history = load(KEY_HIST, []);    // [{date, scope, mode, total, correct, pct, wrong:[]}]
 
-  // ── cloud (Cloudflare Worker API) ──
+  // ── cloud (Cloudflare Worker API, 아이디/비밀번호 로그인) ──
   const API = "https://voca-api.einsgoing.workers.dev";
-  const KEY_SYNC = "voca_sync_code";
+  const KEY_AUTH = "voca_auth";
   let cloudOK = false;
-  let syncCode = localStorage.getItem(KEY_SYNC);
-  if (!syncCode) {
-    syncCode = Math.random().toString(36).slice(2, 8);
-    localStorage.setItem(KEY_SYNC, syncCode);
-  }
+  let auth = load(KEY_AUTH, null); // {id, token}
 
   async function api(path, opts = {}) {
+    const headers = {};
+    if (opts.body) headers["Content-Type"] = "application/json";
+    if (auth) headers["Authorization"] = "Bearer " + auth.token;
     const res = await fetch(API + path, {
       method: opts.method || "GET",
-      headers: opts.body ? { "Content-Type": "application/json" } : undefined,
+      headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
     const data = await res.json().catch(() => ({}));
@@ -545,32 +551,41 @@
     const rows = Object.entries(wrongDB).map(([word, e]) => ({
       word, wrong_count: e.wrong, streak: e.streak, last_wrong: e.last || null,
     }));
-    if (rows.length) await api("/api/wrong", { method: "POST", body: { sync_code: syncCode, rows } });
+    if (rows.length) await api("/api/wrong", { method: "POST", body: { rows } });
   }
   function cloudDeleteWrong(word) {
-    if (cloudOK) api(`/api/wrong?code=${syncCode}&word=${encodeURIComponent(word)}`, { method: "DELETE" }).catch(() => {});
+    if (cloudOK) api(`/api/wrong?word=${encodeURIComponent(word)}`, { method: "DELETE" }).catch(() => {});
   }
   function cloudPushResult(h) {
     if (!cloudOK) return;
     api("/api/results", {
       method: "POST",
       body: {
-        sync_code: syncCode, taken_at: new Date().toISOString(),
+        taken_at: new Date().toISOString(),
         scope: h.scope, mode: h.mode, total: h.total, correct: h.correct, pct: h.pct, wrong_words: h.wrong,
       },
     }).catch(() => {});
   }
 
-  async function cloudInit() {
-    $("syncInput").value = syncCode;
-    try {
-      // 1) 단어: DB 기준 (실패 시 words.js로 동작)
-      await loadWords();
-      cloudOK = true;
-      renderScopes();
+  function renderAuth() {
+    const logged = !!auth;
+    $("authForms").hidden = logged;
+    $("authInfo").hidden = !logged;
+    if (logged) {
+      $("authWho").textContent = auth.id;
+      setSync("☁ " + auth.id, "ok");
+    } else {
+      cloudOK = false;
+      setSync("로그인 안 됨 — 이 기기에만 저장", "off");
+    }
+  }
 
-      // 2) 오답노트 병합 (기기 간: 틀린 횟수는 큰 쪽, 졸업 진행도는 낮은 쪽 기준)
-      const st = await api(`/api/state?code=${syncCode}`);
+  // 로그인 상태에서 성적·오답을 클라우드와 병합
+  async function cloudSync() {
+    try {
+      const st = await api("/api/state");
+
+      // 오답노트 병합 (기기 간: 틀린 횟수는 큰 쪽, 졸업 진행도는 낮은 쪽 기준)
       st.wrong.forEach((n) => {
         const l = wrongDB[n.word];
         wrongDB[n.word] = {
@@ -580,9 +595,10 @@
         };
       });
       save(KEY_WRONG, wrongDB);
+      cloudOK = true;
       pushWrongAll().catch(() => {});
 
-      // 3) 성적 병합: 클라우드에 없는 로컬 기록은 올리고, 합쳐서 정렬
+      // 성적 병합: 클라우드에 없는 로컬 기록은 올리고, 합쳐서 정렬
       const cloudHist = st.results.map((r) => ({
         date: r.taken_at.slice(0, 16).replace("T", " "),
         scope: r.scope, mode: r.mode, total: r.total, correct: r.correct, pct: r.pct,
@@ -594,7 +610,6 @@
         api("/api/results", {
           method: "POST",
           body: {
-            sync_code: syncCode,
             taken_at: new Date(h.date.replace(" ", "T")).toISOString(),
             scope: h.scope, mode: h.mode, total: h.total, correct: h.correct, pct: h.pct, wrong_words: h.wrong,
           },
@@ -602,22 +617,54 @@
       });
       history = [...cloudHist, ...localOnly].sort((a, b) => b.date.localeCompare(a.date));
       save(KEY_HIST, history);
-
-      setSync("☁ 연결됨", "ok");
       renderHome();
     } catch (e) {
       cloudOK = false;
-      setSync("오프라인 — 이 기기에만 저장됩니다", "off");
+      if (String(e.message).includes("로그인")) {  // 토큰 만료 → 재로그인 유도
+        auth = null;
+        localStorage.removeItem(KEY_AUTH);
+        renderAuth();
+        $("authMsg").textContent = "로그인이 만료되었습니다. 다시 로그인해 주세요.";
+      } else {
+        setSync("오프라인 — 이 기기에만 저장됩니다", "off");
+      }
     }
   }
 
-  $("syncApply").onclick = () => {
-    const v = $("syncInput").value.trim().toLowerCase();
-    if (!v) return;
-    if (v !== syncCode && confirm(`동기화 코드를 '${v}'(으)로 바꿀까요?\n해당 코드의 기록을 불러와 현재 기기 기록과 합칩니다.`)) {
-      localStorage.setItem(KEY_SYNC, v);
-      location.reload();
+  async function cloudInit() {
+    try {
+      await loadWords();   // 단어는 로그인 없이 로드 (실패 시 words.js)
+      renderScopes();
+    } catch (e) { /* 오프라인이어도 앱은 동작 */ }
+    renderAuth();
+    if (auth) await cloudSync();
+  }
+
+  async function doAuth(path) {
+    const id = $("authId").value.trim(), pw = $("authPw").value;
+    if (!id || !pw) { $("authMsg").textContent = "아이디와 비밀번호를 입력해 주세요."; return; }
+    $("loginBtn").disabled = true; $("regBtn").disabled = true;
+    try {
+      const d = await api(path, { method: "POST", body: { id, pw } });
+      auth = { id: d.id, token: d.token };
+      save(KEY_AUTH, auth);
+      $("authPw").value = "";
+      renderAuth();
+      await cloudSync();
+    } catch (e) {
+      $("authMsg").textContent = e.message;
     }
+    $("loginBtn").disabled = false; $("regBtn").disabled = false;
+  }
+  $("loginBtn").onclick = () => doAuth("/api/login");
+  $("regBtn").onclick = () => doAuth("/api/register");
+  $("authPw").addEventListener("keydown", (e) => { if (e.key === "Enter") doAuth("/api/login"); });
+  $("logoutBtn").onclick = () => {
+    auth = null;
+    localStorage.removeItem(KEY_AUTH);
+    cloudOK = false;
+    renderAuth();
+    $("authMsg").textContent = "로그아웃했습니다. 기록은 이 기기에 남아 있고, 다시 로그인하면 계정과 합쳐집니다.";
   };
 
   // ── 발음 재생 ──
@@ -1074,7 +1121,7 @@
   $("histClear").onclick = () => {
     if (confirm("성적 기록을 모두 삭제할까요?")) {
       history = []; save(KEY_HIST, history);
-      if (cloudOK) api(`/api/results?code=${syncCode}`, { method: "DELETE" }).catch(() => {});
+      if (cloudOK) api("/api/results", { method: "DELETE" }).catch(() => {});
       renderHistory(); renderHome();
     }
   };
@@ -1106,7 +1153,7 @@
   $("wnClear").onclick = () => {
     if (confirm("오답노트를 모두 비울까요?")) {
       wrongDB = {}; save(KEY_WRONG, wrongDB);
-      if (cloudOK) api(`/api/wrong?code=${syncCode}`, { method: "DELETE" }).catch(() => {});
+      if (cloudOK) api("/api/wrong", { method: "DELETE" }).catch(() => {});
       renderWrongNote();
     }
   };

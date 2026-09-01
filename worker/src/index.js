@@ -18,6 +18,21 @@ const ANALYZE_PROMPT = `이 사진은 한국의 영어 단어장 교재 페이�
 - 손글씨 메모나 체크 표시는 무시하고 인쇄된 내용만 추출한다.
 - 항목을 빠뜨리지 마라.`;
 
+// L16 PCM → WAV 컨테이너 (Gemini TTS는 헤더 없는 PCM을 반환)
+function pcmToWav(pcm, sampleRate) {
+  const header = new ArrayBuffer(44);
+  const v = new DataView(header);
+  const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  writeStr(0, "RIFF"); v.setUint32(4, 36 + pcm.length, true); writeStr(8, "WAVE");
+  writeStr(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  writeStr(36, "data"); v.setUint32(40, pcm.length, true);
+  const out = new Uint8Array(44 + pcm.length);
+  out.set(new Uint8Array(header), 0);
+  out.set(pcm, 44);
+  return out;
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -128,6 +143,42 @@ export default {
           return json({ error: "AI 응답을 해석하지 못했습니다. 다시 시도해 주세요." }, 502);
         }
         return json({ ok: true, photo: key, day: parsed.day ?? (day || null), words: parsed.words || [] });
+      }
+
+      // ── 단어 발음 (TTS 생성 + R2 캐시) ──
+      if (p.startsWith("/api/audio/") && req.method === "GET") {
+        const word = decodeURIComponent(p.slice("/api/audio/".length)).toLowerCase();
+        if (!/^[a-z][a-z' -]{0,40}$/.test(word)) return json({ error: "잘못된 단어" }, 400);
+        const key = `audio/${word}.wav`;
+        const audioHeaders = { "Content-Type": "audio/wav", "Cache-Control": "public, max-age=31536000, immutable", ...CORS };
+
+        const cached = await env.PHOTOS.get(key);
+        if (cached) return new Response(cached.body, { headers: audioHeaders });
+
+        // 최초 요청: Gemini TTS로 생성
+        const g = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${env.GEMINI_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `Pronounce the English word clearly: ${word}` }] }],
+              generationConfig: {
+                responseModalities: ["AUDIO"],
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
+              },
+            }),
+          }
+        );
+        if (!g.ok) return json({ error: `TTS ${g.status}: ${await g.text()}` }, 502);
+        const gd = await g.json();
+        const part = gd.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+        if (!part) return json({ error: "TTS 생성 실패", detail: gd.promptFeedback || null }, 502);
+        const rate = Number(/rate=(\d+)/.exec(part.mimeType)?.[1] || 24000);
+        const pcm = Uint8Array.from(atob(part.data), (c) => c.charCodeAt(0));
+        const wav = pcmToWav(pcm, rate);
+        await env.PHOTOS.put(key, wav, { httpMetadata: { contentType: "audio/wav" } });
+        return new Response(wav, { headers: audioHeaders });
       }
 
       // ── 사진 조회 ──

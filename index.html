@@ -59,10 +59,12 @@
   .logo { font-family: var(--serif); font-size: 1.7rem; font-weight: 700; letter-spacing: .5px; }
   .logo em { font-style: normal; color: var(--accent); }
   .tagline { font-size: .8rem; color: var(--ink-soft); }
-  #themeBtn {
-    margin-left: auto; border: 1px solid var(--line); background: var(--card);
+  #soundBtn, #themeBtn {
+    border: 1px solid var(--line); background: var(--card);
     border-radius: 99px; padding: 4px 12px; cursor: pointer; color: var(--ink-soft); font-size: .8rem;
+    flex: none;
   }
+  #soundBtn { margin-left: auto; }
 
   /* ── tabs ── */
   nav { display: flex; gap: 6px; margin-bottom: 12px; }
@@ -101,7 +103,7 @@
   .opt.sel small { color: var(--accent); }
   .check {
     display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .88rem; color: var(--ink-soft);
-    cursor: pointer; user-select: none;
+    cursor: pointer; -webkit-user-select: none; user-select: none;
   }
   .check input { width: 17px; height: 17px; accent-color: var(--accent); }
   .startBtn {
@@ -307,6 +309,7 @@
   <header>
     <div class="logo">VOCA<em>.</em></div>
     <div class="tagline">나의 영어 단어 시험장</div>
+    <button id="soundBtn" type="button">🔊 소리</button>
     <button id="themeBtn" type="button">테마</button>
   </header>
 
@@ -603,6 +606,38 @@
     }
   };
 
+  // ── 발음 재생 ──
+  const KEY_SOUND = "voca_sound";
+  let soundOn = (localStorage.getItem(KEY_SOUND) ?? "on") === "on";
+  const audioCache = {};
+  function updateSoundBtn() { $("soundBtn").textContent = soundOn ? "🔊 소리" : "🔇 무음"; }
+  $("soundBtn").onclick = () => {
+    soundOn = !soundOn;
+    localStorage.setItem(KEY_SOUND, soundOn ? "on" : "off");
+    updateSoundBtn();
+  };
+  function speak(word) {
+    // 발음 파일을 못 불러올 때 브라우저 내장 TTS로 폴백
+    if (!window.speechSynthesis) return;
+    const u = new SpeechSynthesisUtterance(word);
+    u.lang = "en-US";
+    speechSynthesis.speak(u);
+  }
+  function playWord(word) {
+    if (!soundOn || !word) return;
+    try {
+      let a = audioCache[word];
+      if (!a) {
+        a = new Audio(`${API}/api/audio/${encodeURIComponent(word)}`);
+        a.onerror = () => { audioCache[word] = null; speak(word); };
+        audioCache[word] = a;
+      }
+      a.currentTime = 0;
+      a.play().catch(() => speak(word));
+    } catch { speak(word); }
+  }
+  updateSoundBtn();
+
   // ── theme ──
   const savedTheme = localStorage.getItem(KEY_THEME);
   if (savedTheme) document.documentElement.dataset.theme = savedTheme;
@@ -798,6 +833,7 @@
       renderSlots();
       setTimeout(() => inp.focus(), 50);
     }
+    if (cur.qmode === "mc-ek") playWord(w.word); // 단어가 보이는 문제는 발음도 함께
   }
 
   function renderSlots() {
@@ -820,6 +856,7 @@
     locked = true;
     const w = cur.w;
     if (!(w.word in firstTry)) firstTry[w.word] = ok;
+    if (cur.qmode !== "mc-ek") playWord(w.word); // 정답 공개와 함께 발음
 
     [...$("qChoices").children].forEach((b) => {
       b.disabled = true;
@@ -856,6 +893,7 @@
     const w = cur.w;
     const ok = v === w.word.toLowerCase();
     if (!(w.word in firstTry)) firstTry[w.word] = ok;
+    playWord(w.word); // 정답 공개와 함께 발음
     $("qInput").disabled = true; $("qSubmit").disabled = true;
     $("qInput").blur();
     renderSlots();
@@ -955,6 +993,7 @@
         const a = document.createElement("span"); a.className = "w"; a.textContent = word;
         const b = document.createElement("span"); b.className = "m"; b.textContent = byWord[word].meaning;
         d.append(a, b);
+        d.onclick = () => playWord(word);
         wl.appendChild(d);
       });
     }
@@ -996,6 +1035,7 @@
       const ww = document.createElement("div"); ww.className = "wn-word"; ww.textContent = word;
       const wm = document.createElement("div"); wm.className = "wn-mean"; wm.textContent = w ? w.meaning : "";
       left.append(ww, wm);
+      left.onclick = () => playWord(word);
       const meta = document.createElement("div"); meta.className = "wn-meta";
       meta.innerHTML = `<div class="wn-count">${e.wrong}회 틀림</div><div class="wn-grad">졸업까지 ${GRADUATE_STREAK - e.streak}번 연속 정답</div>`;
       const del = document.createElement("button"); del.className = "wn-del"; del.textContent = "✕"; del.title = "삭제";
@@ -1022,10 +1062,10 @@
     studyIdx = 0; studyFlipped = false; wlShowAll = false;
     $("stScope").textContent = scopeName(scope) + " 학습";
     renderStudyList();
-    renderStudyCard();
+    renderStudyCard(true);
     show("study");
   }
-  function renderStudyCard() {
+  function renderStudyCard(speakNow) {
     const w = studyList[studyIdx];
     $("stIdx").textContent = studyIdx + 1;
     $("stTotal").textContent = studyList.length;
@@ -1033,6 +1073,7 @@
     $("scMeaning").textContent = w.meaning;
     $("scMeaning").hidden = !studyFlipped;
     $("scHint").textContent = studyFlipped ? `Day ${w.day} · ${w.num}번` : "카드를 누르면 뜻이 보입니다";
+    if (speakNow) playWord(w.word);
   }
   function renderStudyList() {
     const box = $("wlRows");
@@ -1043,16 +1084,16 @@
       const a = document.createElement("span"); a.className = "w"; a.textContent = w.word;
       const b = document.createElement("span"); b.className = "m" + (wlShowAll ? "" : " masked"); b.textContent = w.meaning;
       row.append(a, b);
-      row.onclick = () => b.classList.toggle("masked");
+      row.onclick = () => { b.classList.toggle("masked"); playWord(w.word); };
       box.appendChild(row);
     });
     $("wlToggle").textContent = wlShowAll ? "뜻 모두 가리기" : "뜻 모두 보기";
   }
   $("studyBtn").onclick = startStudy;
   $("studyCard").onclick = () => { studyFlipped = !studyFlipped; renderStudyCard(); };
-  $("stPrev").onclick = () => { studyIdx = (studyIdx - 1 + studyList.length) % studyList.length; studyFlipped = false; renderStudyCard(); };
-  $("stNext").onclick = () => { studyIdx = (studyIdx + 1) % studyList.length; studyFlipped = false; renderStudyCard(); };
-  $("stShuffle").onclick = () => { studyList = shuffle(studyList); studyIdx = 0; studyFlipped = false; renderStudyCard(); };
+  $("stPrev").onclick = () => { studyIdx = (studyIdx - 1 + studyList.length) % studyList.length; studyFlipped = false; renderStudyCard(true); };
+  $("stNext").onclick = () => { studyIdx = (studyIdx + 1) % studyList.length; studyFlipped = false; renderStudyCard(true); };
+  $("stShuffle").onclick = () => { studyList = shuffle(studyList); studyIdx = 0; studyFlipped = false; renderStudyCard(true); };
   $("stHome").onclick = () => show("home");
   $("wlToggle").onclick = () => { wlShowAll = !wlShowAll; renderStudyList(); };
 

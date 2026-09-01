@@ -229,6 +229,7 @@
     flex: 1; padding: 12px 0; border: 1.5px solid var(--line); border-radius: 10px;
     background: var(--card); color: var(--ink); font-weight: 700; cursor: pointer; font-size: .92rem; font-family: var(--sans);
   }
+  .studyrow .flip-btn { background: var(--accent); color: #fff; border-color: var(--accent); }
   .wl-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .wl-head h2 { margin-bottom: 0; }
   .wl-head button {
@@ -378,8 +379,11 @@
     </div>
     <div class="studyrow">
       <button id="stPrev" type="button">← 이전</button>
-      <button id="stShuffle" type="button">🔀 섞기</button>
+      <button id="stFlip" class="flip-btn" type="button">뜻 보기</button>
       <button id="stNext" type="button">다음 →</button>
+    </div>
+    <div class="studyrow">
+      <button id="stShuffle" type="button">🔀 섞기</button>
     </div>
     <div class="card">
       <div class="wl-head">
@@ -1123,6 +1127,7 @@
     $("scMeaning").textContent = w.meaning;
     $("scMeaning").hidden = !studyFlipped;
     $("scHint").textContent = studyFlipped ? `Day ${w.day} · ${w.num}번` : "카드를 누르면 뜻이 보입니다";
+    $("stFlip").textContent = studyFlipped ? "뜻 가리기" : "뜻 보기";
     const im = $("scImg");
     if (imgOn) {
       const src = `${API}/api/image/${encodeURIComponent(w.word)}`;
@@ -1156,6 +1161,7 @@
   }
   $("studyBtn").onclick = startStudy;
   $("studyCard").onclick = () => { studyFlipped = !studyFlipped; renderStudyCard(); };
+  $("stFlip").onclick = () => { studyFlipped = !studyFlipped; renderStudyCard(); };
   $("stPrev").onclick = () => { studyIdx = (studyIdx - 1 + studyList.length) % studyList.length; studyFlipped = false; renderStudyCard(true); };
   $("stNext").onclick = () => { studyIdx = (studyIdx + 1) % studyList.length; studyFlipped = false; renderStudyCard(true); };
   $("stShuffle").onclick = () => { studyList = shuffle(studyList); studyIdx = 0; studyFlipped = false; renderStudyCard(true); };

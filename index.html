@@ -53,18 +53,22 @@
 
   /* ── header ── */
   header {
-    display: flex; align-items: baseline; gap: 10px;
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
     padding: 4px 0 10px;
   }
   .logo { font-family: var(--serif); font-size: 1.7rem; font-weight: 700; letter-spacing: .5px; }
   .logo em { font-style: normal; color: var(--accent); }
-  .tagline { font-size: .8rem; color: var(--ink-soft); }
+  .tagline { font-size: .8rem; color: var(--ink-soft); white-space: nowrap; }
+  .hbtns { margin-left: auto; display: flex; gap: 6px; }
   #imgBtn, #soundBtn, #themeBtn {
     border: 1px solid var(--line); background: var(--card);
     border-radius: 99px; padding: 4px 12px; cursor: pointer; color: var(--ink-soft); font-size: .8rem;
-    flex: none;
+    flex: none; white-space: nowrap;
   }
-  #imgBtn { margin-left: auto; }
+  @media (max-width: 600px) {
+    /* 좁은 화면: 버튼 묶음을 아래 줄 전체로 */
+    .hbtns { margin-left: 0; flex-basis: 100%; }
+  }
 
   /* ── tabs ── */
   nav { display: flex; gap: 6px; margin-bottom: 12px; }
@@ -322,9 +326,11 @@
   <header>
     <div class="logo">VOCA<em>.</em></div>
     <div class="tagline">나의 영어 단어 시험장</div>
-    <button id="imgBtn" type="button">🖼 이미지</button>
-    <button id="soundBtn" type="button">🔊 소리</button>
-    <button id="themeBtn" type="button">테마</button>
+    <div class="hbtns">
+      <button id="imgBtn" type="button">🖼 이미지</button>
+      <button id="soundBtn" type="button">🔊 소리</button>
+      <button id="themeBtn" type="button">테마</button>
+    </div>
   </header>
 
   <nav>
@@ -773,14 +779,16 @@
   function scopeName() {
     if (scopeSel.has("all")) return "전체";
     if (scopeSel.has("wrong")) return "오답노트";
+    if (scopeSel.has("random25")) return "임의 25";
     return "Day " + [...scopeSel].map(Number).sort((a, b) => a - b).join("+");
   }
+  const SPECIAL_SCOPES = ["all", "wrong", "random25"]; // 단독 선택 옵션들
   function paintScopes() {
     [...$("scopeGrid").children].forEach((x) => x.classList.toggle("sel", scopeSel.has(x.dataset.scope)));
   }
   function renderScopes() {
     const days = dayList();
-    const valid = [...days, "all", "wrong"];
+    const valid = [...days, ...SPECIAL_SCOPES];
     const kept = [...scopeSel].filter((v) => valid.includes(v));
     scopeSel = new Set(kept.length ? kept : [days[0] ?? "all"]);
     const g = $("scopeGrid");
@@ -797,6 +805,7 @@
     };
     days.forEach((d) => mk(d, `Day ${d}`, `${WORDS.filter((w) => String(w.day) === d).length} 단어`));
     mk("all", "전체", `${WORDS.length} 단어 모두`);
+    mk("random25", "임의 25단어", "전체에서 무작위로 25개 추첨");
     mk("wrong", "오답노트만", "틀렸던 단어 집중 공략");
     paintScopes();
   }
@@ -806,10 +815,10 @@
     const days = dayList();
     const multiKey = e.ctrlKey || e.metaKey;
     const touchToggle = matchMedia("(pointer: coarse)").matches;
-    const hasSpecial = scopeSel.has("all") || scopeSel.has("wrong");
+    const hasSpecial = SPECIAL_SCOPES.some((s) => scopeSel.has(s));
 
-    if (val === "all" || val === "wrong") {
-      scopeSel = new Set([val]);                       // 전체/오답노트는 단독 선택
+    if (SPECIAL_SCOPES.includes(val)) {
+      scopeSel = new Set([val]);                       // 전체/임의/오답노트는 단독 선택
     } else if (e.shiftKey && !hasSpecial && days.includes(scopeAnchor)) {
       const i = days.indexOf(scopeAnchor), j = days.indexOf(val);
       scopeSel = new Set(days.slice(Math.min(i, j), Math.max(i, j) + 1));  // 앵커~클릭 연속 범위
@@ -908,6 +917,7 @@
   function buildPool() {
     let pool;
     if (scopeSel.has("all")) pool = WORDS.slice();
+    else if (scopeSel.has("random25")) pool = pick(WORDS, 25); // 전체에서 무작위 25개
     else if (scopeSel.has("wrong")) pool = Object.keys(wrongDB).map((w) => byWord[w]).filter(Boolean);
     else {
       const days = [...scopeSel].map(Number);

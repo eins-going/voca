@@ -181,6 +181,44 @@ export default {
         return new Response(wav, { headers: audioHeaders });
       }
 
+      // ── 단어 연상 이미지 (생성 + R2 캐시) ──
+      if (p.startsWith("/api/image/") && req.method === "GET") {
+        const word = decodeURIComponent(p.slice("/api/image/".length)).toLowerCase();
+        if (!/^[a-z][a-z' -]{0,40}$/.test(word)) return json({ error: "잘못된 단어" }, 400);
+        const key = `images/${word}.jpg`;
+        const imgHeaders = { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", ...CORS };
+
+        const cached = await env.PHOTOS.get(key);
+        if (cached) return new Response(cached.body, { headers: imgHeaders });
+
+        // 뜻을 DB에서 찾아 프롬프트에 반영 (다의어 구분)
+        const row = await env.DB.prepare("SELECT meaning FROM words WHERE word=?1").bind(word).first();
+        if (!row) return json({ error: "단어장에 없는 단어" }, 404);
+
+        const prompt =
+          `Create a simple, vivid cartoon illustration that helps a Korean student memorize the English word "${word}" ` +
+          `meaning "${row.meaning}". Invent one clear, memorable scene that directly and unmistakably conveys this meaning. ` +
+          `Educational flashcard style, bright colors, single scene, no text or letters anywhere in the image.`;
+        const g = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${env.GEMINI_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseModalities: ["IMAGE"] },
+            }),
+          }
+        );
+        if (!g.ok) return json({ error: `이미지 생성 ${g.status}: ${await g.text()}` }, 502);
+        const gd = await g.json();
+        const part = (gd.candidates?.[0]?.content?.parts || []).find((x) => x.inlineData);
+        if (!part) return json({ error: "이미지 생성 실패" }, 502);
+        const bytes = Uint8Array.from(atob(part.inlineData.data), (c) => c.charCodeAt(0));
+        await env.PHOTOS.put(key, bytes, { httpMetadata: { contentType: part.inlineData.mimeType || "image/jpeg" } });
+        return new Response(bytes, { headers: { ...imgHeaders, "Content-Type": part.inlineData.mimeType || "image/jpeg" } });
+      }
+
       // ── 사진 조회 ──
       if (p === "/api/photos" && req.method === "GET") {
         const { results } = await env.DB.prepare("SELECT key, uploaded_at, day FROM photos ORDER BY id DESC").all();

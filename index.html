@@ -59,12 +59,12 @@
   .logo { font-family: var(--serif); font-size: 1.7rem; font-weight: 700; letter-spacing: .5px; }
   .logo em { font-style: normal; color: var(--accent); }
   .tagline { font-size: .8rem; color: var(--ink-soft); }
-  #soundBtn, #themeBtn {
+  #imgBtn, #soundBtn, #themeBtn {
     border: 1px solid var(--line); background: var(--card);
     border-radius: 99px; padding: 4px 12px; cursor: pointer; color: var(--ink-soft); font-size: .8rem;
     flex: none;
   }
-  #soundBtn { margin-left: auto; }
+  #imgBtn { margin-left: auto; }
 
   /* ── tabs ── */
   nav { display: flex; gap: 6px; margin-bottom: 12px; }
@@ -221,6 +221,7 @@
   }
   .studycard:active { border-color: var(--accent); }
   .sc-word { font-family: var(--serif); font-size: 2.7rem; font-weight: 700; overflow-wrap: break-word; max-width: 100%; }
+  .sc-img { max-width: 100%; max-height: 280px; border-radius: 10px; object-fit: contain; }
   .sc-meaning { font-size: 1.15rem; font-weight: 600; word-break: keep-all; color: var(--accent); }
   .sc-hint { font-size: .78rem; color: var(--ink-soft); }
   .studyrow { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -310,6 +311,7 @@
   <header>
     <div class="logo">VOCA<em>.</em></div>
     <div class="tagline">나의 영어 단어 시험장</div>
+    <button id="imgBtn" type="button">🖼 이미지</button>
     <button id="soundBtn" type="button">🔊 소리</button>
     <button id="themeBtn" type="button">테마</button>
   </header>
@@ -370,6 +372,7 @@
     <div class="qtop"><span id="stScope"></span><span><b id="stIdx">1</b> / <b id="stTotal">1</b></span></div>
     <div class="card studycard" id="studyCard">
       <div class="sc-word" id="scWord"></div>
+      <img class="sc-img" id="scImg" alt="단어 연상 이미지" hidden>
       <div class="sc-meaning" id="scMeaning" hidden></div>
       <div class="sc-hint" id="scHint">카드를 누르면 뜻이 보입니다</div>
     </div>
@@ -618,6 +621,18 @@
     localStorage.setItem(KEY_SOUND, soundOn ? "on" : "off");
     updateSoundBtn();
   };
+  // ── 연상 이미지 ──
+  const KEY_IMG = "voca_img";
+  let imgOn = (localStorage.getItem(KEY_IMG) ?? "on") === "on";
+  function updateImgBtn() { $("imgBtn").textContent = imgOn ? "🖼 이미지" : "🖼 끔"; }
+  $("imgBtn").onclick = () => {
+    imgOn = !imgOn;
+    localStorage.setItem(KEY_IMG, imgOn ? "on" : "off");
+    updateImgBtn();
+    if ($("view-study").classList.contains("on")) renderStudyCard(false);
+  };
+  updateImgBtn();
+
   function speak(word) {
     // 발음 파일을 못 불러올 때 브라우저 내장 TTS로 폴백
     if (!window.speechSynthesis) return;
@@ -1108,6 +1123,21 @@
     $("scMeaning").textContent = w.meaning;
     $("scMeaning").hidden = !studyFlipped;
     $("scHint").textContent = studyFlipped ? `Day ${w.day} · ${w.num}번` : "카드를 누르면 뜻이 보입니다";
+    const im = $("scImg");
+    if (imgOn) {
+      const src = `${API}/api/image/${encodeURIComponent(w.word)}`;
+      if (im.dataset.word !== w.word) {
+        im.hidden = true;                    // 로딩 전엔 감춤 (이전 단어 이미지 잔상 방지)
+        im.dataset.word = w.word;
+        im.onload = () => { if (im.dataset.word === w.word) im.hidden = false; };
+        im.onerror = () => { im.hidden = true; };
+        im.src = src;
+      } else {
+        im.hidden = !im.complete;
+      }
+    } else {
+      im.hidden = true;
+    }
     if (speakNow) playWord(w.word);
   }
   function renderStudyList() {

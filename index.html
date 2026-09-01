@@ -232,10 +232,11 @@
   .studyrow .flip-btn { background: var(--accent); color: #fff; border-color: var(--accent); }
   .wl-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .wl-head h2 { margin-bottom: 0; }
-  .wl-head button {
+  .wl-head button, .pill {
     border: 1px solid var(--line); background: var(--card); color: var(--ink-soft);
     border-radius: 99px; padding: 4px 12px; font-size: .78rem; cursor: pointer; font-family: var(--sans);
   }
+  .pill.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .wl-row {
     display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px;
     border-bottom: 1px dashed var(--line); font-size: .92rem; cursor: pointer; align-items: baseline;
@@ -370,7 +371,11 @@
 
   <!-- ═══ 학습하기 ═══ -->
   <section class="view" id="view-study">
-    <div class="qtop"><span id="stScope"></span><span><b id="stIdx">1</b> / <b id="stTotal">1</b></span></div>
+    <div class="qtop">
+      <span id="stScope"></span>
+      <button id="stHideMode" class="pill" type="button">뜻 숨기기</button>
+      <span><b id="stIdx">1</b> / <b id="stTotal">1</b></span>
+    </div>
     <div class="card studycard" id="studyCard">
       <div class="sc-word" id="scWord"></div>
       <img class="sc-img" id="scImg" alt="단어 연상 이미지" hidden>
@@ -1107,14 +1112,34 @@
   };
 
   // ── 학습하기 (플래시카드 + 단어 목록) ──
-  let studyList = [], studyIdx = 0, studyFlipped = false, wlShowAll = false;
+  // 기본: 단어와 뜻이 처음부터 함께 보임. '뜻 숨기기'를 켜면 셀프 테스트 모드.
+  const KEY_HIDE = "voca_hidemean";
+  let hideMeaning = localStorage.getItem(KEY_HIDE) === "on";
+  let studyList = [], studyIdx = 0, studyFlipped = true, wlShowAll = true;
+
+  function updateHideBtn() {
+    $("stHideMode").textContent = hideMeaning ? "뜻 보이기" : "뜻 숨기기";
+    $("stHideMode").classList.toggle("on", hideMeaning);
+  }
+  $("stHideMode").onclick = () => {
+    hideMeaning = !hideMeaning;
+    localStorage.setItem(KEY_HIDE, hideMeaning ? "on" : "off");
+    studyFlipped = !hideMeaning;
+    wlShowAll = !hideMeaning;
+    updateHideBtn();
+    renderStudyCard(false);
+    renderStudyList();
+  };
 
   function startStudy() {
     const pool = buildPool();
     if (!pool.length) { alert("학습할 단어가 없습니다. 오답노트가 비어 있어요!"); return; }
     studyList = shuffle(pool);
-    studyIdx = 0; studyFlipped = false; wlShowAll = false;
+    studyIdx = 0;
+    studyFlipped = !hideMeaning;
+    wlShowAll = !hideMeaning;
     $("stScope").textContent = scopeName() + " 학습";
+    updateHideBtn();
     renderStudyList();
     renderStudyCard(true);
     show("study");
@@ -1162,9 +1187,9 @@
   $("studyBtn").onclick = startStudy;
   $("studyCard").onclick = () => { studyFlipped = !studyFlipped; renderStudyCard(); };
   $("stFlip").onclick = () => { studyFlipped = !studyFlipped; renderStudyCard(); };
-  $("stPrev").onclick = () => { studyIdx = (studyIdx - 1 + studyList.length) % studyList.length; studyFlipped = false; renderStudyCard(true); };
-  $("stNext").onclick = () => { studyIdx = (studyIdx + 1) % studyList.length; studyFlipped = false; renderStudyCard(true); };
-  $("stShuffle").onclick = () => { studyList = shuffle(studyList); studyIdx = 0; studyFlipped = false; renderStudyCard(true); };
+  $("stPrev").onclick = () => { studyIdx = (studyIdx - 1 + studyList.length) % studyList.length; studyFlipped = !hideMeaning; renderStudyCard(true); };
+  $("stNext").onclick = () => { studyIdx = (studyIdx + 1) % studyList.length; studyFlipped = !hideMeaning; renderStudyCard(true); };
+  $("stShuffle").onclick = () => { studyList = shuffle(studyList); studyIdx = 0; studyFlipped = !hideMeaning; renderStudyCard(true); };
   $("stHome").onclick = () => show("home");
   $("wlToggle").onclick = () => { wlShowAll = !wlShowAll; renderStudyList(); };
 

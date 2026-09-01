@@ -196,9 +196,11 @@ export default {
         if (!row) return json({ error: "단어장에 없는 단어" }, 404);
 
         const prompt =
-          `Create a simple, vivid cartoon illustration that helps a Korean student memorize the English word "${word}" ` +
-          `meaning "${row.meaning}". Invent one clear, memorable scene that directly and unmistakably conveys this meaning. ` +
-          `Educational flashcard style, bright colors, single scene, no text or letters anywhere in the image.`;
+          `Very simple flat cartoon that acts out the meaning of the English word "${word}" (Korean meaning: ${row.meaning}). ` +
+          `One concrete mini-scene: a single character (or object) literally performing this meaning, instantly readable in one second. ` +
+          `Example of the idea: for "exaggerate", a fisherman spreading his arms huge while holding a tiny fish. ` +
+          `Style: plain white background, thick clean outlines, flat bright colors, at most one character and two objects. ` +
+          `No text or letters. No abstract symbols like X marks, checkmarks, arrows or question marks. No background scenery, no clutter.`;
         const g = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${env.GEMINI_API_KEY}`,
           {

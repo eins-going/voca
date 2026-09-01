@@ -97,6 +97,7 @@
   .opt {
     border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 12px;
     cursor: pointer; background: var(--card); text-align: left; font-family: var(--sans); color: var(--ink);
+    -webkit-user-select: none; user-select: none;
   }
   .opt small { display: block; color: var(--ink-soft); font-size: .75rem; margin-top: 2px; }
   .opt.sel { border-color: var(--accent); background: var(--accent-soft); }
@@ -334,6 +335,7 @@
     <div class="card">
       <h2>범위 선택</h2>
       <div class="optgrid" id="scopeGrid"></div>
+      <p class="hint">여러 Day를 함께 시험 보려면 <b>Ctrl(⌘)+클릭</b>, 연속 범위는 <b>Shift+클릭</b>. 휴대폰에서는 탭할 때마다 추가/해제됩니다.</p>
     </div>
 
     <div class="card">
@@ -664,31 +666,62 @@
   $("tab-wrong").onclick = () => show("wrong");
 
   // ── option selection ──
-  let scope = "17", mode = "type";
+  // 범위는 복수 선택 가능: Ctrl(⌘)+클릭 = 추가/해제, Shift+클릭 = 연속 범위, 터치 기기는 탭 = 추가/해제
+  let scopeSel = new Set(["17"]), scopeAnchor = "17", mode = "type";
+  const dayList = () => [...new Set(WORDS.map((w) => w.day))].sort((a, b) => a - b).map(String);
+
+  function scopeName() {
+    if (scopeSel.has("all")) return "전체";
+    if (scopeSel.has("wrong")) return "오답노트";
+    return "Day " + [...scopeSel].map(Number).sort((a, b) => a - b).join("+");
+  }
+  function paintScopes() {
+    [...$("scopeGrid").children].forEach((x) => x.classList.toggle("sel", scopeSel.has(x.dataset.scope)));
+  }
   function renderScopes() {
-    const days = [...new Set(WORDS.map((w) => w.day))].sort((a, b) => a - b);
-    const valid = [...days.map(String), "all", "wrong"];
-    if (!valid.includes(scope)) scope = String(days[0] ?? "all");
+    const days = dayList();
+    const valid = [...days, "all", "wrong"];
+    const kept = [...scopeSel].filter((v) => valid.includes(v));
+    scopeSel = new Set(kept.length ? kept : [days[0] ?? "all"]);
     const g = $("scopeGrid");
     g.innerHTML = "";
     const mk = (val, title, sub) => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "opt" + (val === scope ? " sel" : "");
+      b.className = "opt";
       b.dataset.scope = val;
       const s = document.createElement("small");
       s.textContent = sub;
       b.append(document.createTextNode(title), s);
       g.appendChild(b);
     };
-    days.forEach((d) => mk(String(d), `Day ${d}`, `${WORDS.filter((w) => w.day === d).length} 단어`));
+    days.forEach((d) => mk(d, `Day ${d}`, `${WORDS.filter((w) => String(w.day) === d).length} 단어`));
     mk("all", "전체", `${WORDS.length} 단어 모두`);
     mk("wrong", "오답노트만", "틀렸던 단어 집중 공략");
+    paintScopes();
   }
   $("scopeGrid").addEventListener("click", (e) => {
     const b = e.target.closest(".opt"); if (!b) return;
-    scope = b.dataset.scope;
-    [...$("scopeGrid").children].forEach((x) => x.classList.toggle("sel", x === b));
+    const val = b.dataset.scope;
+    const days = dayList();
+    const multiKey = e.ctrlKey || e.metaKey;
+    const touchToggle = matchMedia("(pointer: coarse)").matches;
+    const hasSpecial = scopeSel.has("all") || scopeSel.has("wrong");
+
+    if (val === "all" || val === "wrong") {
+      scopeSel = new Set([val]);                       // 전체/오답노트는 단독 선택
+    } else if (e.shiftKey && !hasSpecial && days.includes(scopeAnchor)) {
+      const i = days.indexOf(scopeAnchor), j = days.indexOf(val);
+      scopeSel = new Set(days.slice(Math.min(i, j), Math.max(i, j) + 1));  // 앵커~클릭 연속 범위
+    } else if ((multiKey || touchToggle) && !hasSpecial) {
+      if (scopeSel.has(val)) { if (scopeSel.size > 1) scopeSel.delete(val); }  // 최소 1개 유지
+      else scopeSel.add(val);
+      scopeAnchor = val;
+    } else {
+      scopeSel = new Set([val]);
+      scopeAnchor = val;
+    }
+    paintScopes();
   });
   $("modeGrid").addEventListener("click", (e) => {
     const b = e.target.closest(".opt"); if (!b) return;
@@ -706,7 +739,6 @@
     return r;
   };
   const pick = (a, n) => shuffle(a).slice(0, n);
-  const scopeName = (s) => (s === "all" ? "전체" : s === "wrong" ? "오답노트" : "Day " + s);
   const modeLabel = { "mc-ek": "객관식(뜻)", "mc-ke": "객관식(단어)", "type": "주관식", "mix": "혼합" };
 
   function updateBadge() {
@@ -731,10 +763,13 @@
 
   function buildPool() {
     let pool;
-    if (scope === "all") pool = WORDS.slice();
-    else if (scope === "wrong") pool = Object.keys(wrongDB).map((w) => byWord[w]).filter(Boolean);
-    else pool = WORDS.filter((w) => w.day === Number(scope));
-    if (scope !== "wrong" && $("includeWrong").checked) {
+    if (scopeSel.has("all")) pool = WORDS.slice();
+    else if (scopeSel.has("wrong")) pool = Object.keys(wrongDB).map((w) => byWord[w]).filter(Boolean);
+    else {
+      const days = [...scopeSel].map(Number);
+      pool = WORDS.filter((w) => days.includes(w.day));
+    }
+    if (!scopeSel.has("wrong") && $("includeWrong").checked) {
       Object.keys(wrongDB).forEach((w) => {
         if (byWord[w] && !pool.includes(byWord[w])) pool.push(byWord[w]);
       });
@@ -959,7 +994,7 @@
 
     const entry = {
       date: new Date().toISOString().slice(0, 16).replace("T", " "),
-      scope: scopeName(scope), mode: modeLabel[mode],
+      scope: scopeName(), mode: modeLabel[mode],
       total, correct, pct, wrong: [...sessionWrong],
     };
     history.unshift(entry);
@@ -1060,7 +1095,7 @@
     if (!pool.length) { alert("학습할 단어가 없습니다. 오답노트가 비어 있어요!"); return; }
     studyList = shuffle(pool);
     studyIdx = 0; studyFlipped = false; wlShowAll = false;
-    $("stScope").textContent = scopeName(scope) + " 학습";
+    $("stScope").textContent = scopeName() + " 학습";
     renderStudyList();
     renderStudyCard(true);
     show("study");
@@ -1194,7 +1229,8 @@
       $("reviewCard").hidden = true;
       $("upThumb").hidden = true; $("upHint").hidden = false;
       $("upFile").value = ""; $("upDay").value = ""; $("upStatus").textContent = "";
-      scope = String(day);
+      scopeSel = new Set([String(day)]);
+      scopeAnchor = String(day);
       renderScopes();
       show("home");
     } catch (err) {

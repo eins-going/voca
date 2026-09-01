@@ -232,6 +232,23 @@
   }
   .wrow .del { background: none; border: none; color: var(--ink-soft); cursor: pointer; font-size: .95rem; padding: 2px; }
 
+  /* ── 로딩 오버레이 ── */
+  .overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(20, 24, 31, .55);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  }
+  .spinner {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 5px solid rgba(255, 255, 255, .25); border-top-color: #fff;
+    animation: spin .9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .overlay p { color: #fff; font-size: .95rem; font-weight: 600; text-align: center; line-height: 1.5; }
+  .overlay p small { font-weight: 400; opacity: .75; }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.5s; } }
+
   /* ── cloud sync ── */
   .sync-status { text-transform: none; letter-spacing: 0; margin-left: 6px; font-weight: 700; }
   .sync-status.ok { color: var(--good); }
@@ -389,6 +406,11 @@
       <button class="danger" id="wnClear" type="button">오답노트 비우기</button>
     </div>
   </section>
+</div>
+
+<div class="overlay" id="busy" hidden>
+  <div class="spinner" role="status" aria-label="분석 중"></div>
+  <p>AI가 사진을 읽는 중…<br><small>10초 정도 걸립니다</small></p>
 </div>
 
 <script src="words.js"></script>
@@ -960,7 +982,8 @@
   $("upGo").onclick = async () => {
     if (!upData) { $("upStatus").textContent = "사진을 먼저 선택해 주세요."; return; }
     $("upGo").disabled = true;
-    $("upStatus").textContent = "AI가 사진을 읽는 중… (10초쯤 걸립니다)";
+    $("upStatus").textContent = "";
+    $("busy").hidden = false;
     try {
       const d = await api("/api/analyze", {
         method: "POST",
@@ -975,6 +998,7 @@
     } catch (err) {
       $("upStatus").textContent = "분석 실패: " + err.message;
     }
+    $("busy").hidden = true;
     $("upGo").disabled = false;
   };
 

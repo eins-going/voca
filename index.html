@@ -211,6 +211,36 @@
   .hint { font-size: .78rem; color: var(--ink-soft); margin-top: 10px; word-break: keep-all; }
   .hint-tight { margin-top: 0; margin-bottom: 8px; }
 
+  /* ── 학습하기 ── */
+  .studycard {
+    min-height: 250px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; cursor: pointer; -webkit-user-select: none; user-select: none; gap: 10px;
+  }
+  .studycard:active { border-color: var(--accent); }
+  .sc-word { font-family: var(--serif); font-size: 2.7rem; font-weight: 700; overflow-wrap: break-word; max-width: 100%; }
+  .sc-meaning { font-size: 1.15rem; font-weight: 600; word-break: keep-all; color: var(--accent); }
+  .sc-hint { font-size: .78rem; color: var(--ink-soft); }
+  .studyrow { display: flex; gap: 8px; margin-bottom: 10px; }
+  .studyrow button {
+    flex: 1; padding: 12px 0; border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--card); color: var(--ink); font-weight: 700; cursor: pointer; font-size: .92rem; font-family: var(--sans);
+  }
+  .wl-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .wl-head h2 { margin-bottom: 0; }
+  .wl-head button {
+    border: 1px solid var(--line); background: var(--card); color: var(--ink-soft);
+    border-radius: 99px; padding: 4px 12px; font-size: .78rem; cursor: pointer; font-family: var(--sans);
+  }
+  .wl-row {
+    display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px;
+    border-bottom: 1px dashed var(--line); font-size: .92rem; cursor: pointer; align-items: baseline;
+  }
+  .wl-row:last-child { border-bottom: none; }
+  .wl-row .w { font-family: var(--serif); font-weight: 700; }
+  .wl-row .m { color: var(--ink-soft); text-align: right; font-size: .84rem; word-break: keep-all; transition: filter .15s ease; }
+  .wl-row .m.masked { filter: blur(6px); }
+  @media (prefers-reduced-motion: reduce) { .wl-row .m { transition: none; } }
+
   /* ── 사진 추가 ── */
   .upload-box {
     display: block; border: 2px dashed var(--line); border-radius: 12px; padding: 18px;
@@ -314,7 +344,10 @@
       <label class="check"><input type="checkbox" id="includeWrong" checked> 오답노트 단어를 이번 시험에 포함 (자동 복습)</label>
     </div>
 
-    <button class="startBtn" id="startBtn" type="button">시험 시작 →</button>
+    <div class="btnrow">
+      <button id="studyBtn" type="button">📖 학습하기</button>
+      <button id="startBtn" class="primary" type="button">시험 시작 →</button>
+    </div>
     <p class="hint">문제는 무작위 순서로 출제되고, 틀린 문제는 그 시험 안에서 맞힐 때까지 다시 나옵니다. 첫 시도에서 틀린 단어는 오답노트에 저장되어 다음 시험에도 포함됩니다.</p>
 
     <div class="card">
@@ -325,6 +358,30 @@
       </div>
       <p class="hint">이 코드가 내 기록의 열쇠입니다. 폰·PC 등 다른 기기에서 같은 코드를 입력하면 성적과 오답노트가 하나로 이어집니다.</p>
     </div>
+  </section>
+
+  <!-- ═══ 학습하기 ═══ -->
+  <section class="view" id="view-study">
+    <div class="qtop"><span id="stScope"></span><span><b id="stIdx">1</b> / <b id="stTotal">1</b></span></div>
+    <div class="card studycard" id="studyCard">
+      <div class="sc-word" id="scWord"></div>
+      <div class="sc-meaning" id="scMeaning" hidden></div>
+      <div class="sc-hint" id="scHint">카드를 누르면 뜻이 보입니다</div>
+    </div>
+    <div class="studyrow">
+      <button id="stPrev" type="button">← 이전</button>
+      <button id="stShuffle" type="button">🔀 섞기</button>
+      <button id="stNext" type="button">다음 →</button>
+    </div>
+    <div class="card">
+      <div class="wl-head">
+        <h2>단어 목록</h2>
+        <button id="wlToggle" type="button">뜻 모두 보기</button>
+      </div>
+      <div id="wlRows"></div>
+      <p class="hint">단어를 누르면 그 뜻만 보였다 가려집니다. 뜻을 가린 채 떠올려 보는 게 암기에 좋아요.</p>
+    </div>
+    <button class="quitBtn" id="stHome" type="button">홈으로 돌아가기</button>
   </section>
 
   <!-- ═══ 단어 추가 ═══ -->
@@ -557,7 +614,7 @@
   };
 
   // ── tabs / views ──
-  const views = ["home", "add", "quiz", "result", "history", "wrong"];
+  const views = ["home", "study", "add", "quiz", "result", "history", "wrong"];
   function show(v) {
     views.forEach((x) => $("view-" + x).classList.toggle("on", x === v));
     ["home", "add", "history", "wrong"].forEach((x) =>
@@ -954,6 +1011,58 @@
       renderWrongNote();
     }
   };
+
+  // ── 학습하기 (플래시카드 + 단어 목록) ──
+  let studyList = [], studyIdx = 0, studyFlipped = false, wlShowAll = false;
+
+  function startStudy() {
+    const pool = buildPool();
+    if (!pool.length) { alert("학습할 단어가 없습니다. 오답노트가 비어 있어요!"); return; }
+    studyList = shuffle(pool);
+    studyIdx = 0; studyFlipped = false; wlShowAll = false;
+    $("stScope").textContent = scopeName(scope) + " 학습";
+    renderStudyList();
+    renderStudyCard();
+    show("study");
+  }
+  function renderStudyCard() {
+    const w = studyList[studyIdx];
+    $("stIdx").textContent = studyIdx + 1;
+    $("stTotal").textContent = studyList.length;
+    $("scWord").textContent = w.word;
+    $("scMeaning").textContent = w.meaning;
+    $("scMeaning").hidden = !studyFlipped;
+    $("scHint").textContent = studyFlipped ? `Day ${w.day} · ${w.num}번` : "카드를 누르면 뜻이 보입니다";
+  }
+  function renderStudyList() {
+    const box = $("wlRows");
+    box.innerHTML = "";
+    [...studyList].sort((a, b) => a.day - b.day || a.num - b.num).forEach((w) => {
+      const row = document.createElement("div");
+      row.className = "wl-row";
+      const a = document.createElement("span"); a.className = "w"; a.textContent = w.word;
+      const b = document.createElement("span"); b.className = "m" + (wlShowAll ? "" : " masked"); b.textContent = w.meaning;
+      row.append(a, b);
+      row.onclick = () => b.classList.toggle("masked");
+      box.appendChild(row);
+    });
+    $("wlToggle").textContent = wlShowAll ? "뜻 모두 가리기" : "뜻 모두 보기";
+  }
+  $("studyBtn").onclick = startStudy;
+  $("studyCard").onclick = () => { studyFlipped = !studyFlipped; renderStudyCard(); };
+  $("stPrev").onclick = () => { studyIdx = (studyIdx - 1 + studyList.length) % studyList.length; studyFlipped = false; renderStudyCard(); };
+  $("stNext").onclick = () => { studyIdx = (studyIdx + 1) % studyList.length; studyFlipped = false; renderStudyCard(); };
+  $("stShuffle").onclick = () => { studyList = shuffle(studyList); studyIdx = 0; studyFlipped = false; renderStudyCard(); };
+  $("stHome").onclick = () => show("home");
+  $("wlToggle").onclick = () => { wlShowAll = !wlShowAll; renderStudyList(); };
+
+  // 학습 화면 키보드: ←/→ 이동, 스페이스/엔터로 뒤집기
+  document.addEventListener("keydown", (e) => {
+    if (!$("view-study").classList.contains("on")) return;
+    if (e.key === "ArrowLeft") $("stPrev").click();
+    else if (e.key === "ArrowRight") $("stNext").click();
+    else if (e.key === " " || e.key === "Enter") { e.preventDefault(); $("studyCard").click(); }
+  });
 
   // ── 사진으로 단어 추가 ──
   let upData = null, revWords = [];

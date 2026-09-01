@@ -159,6 +159,7 @@
     font-family: var(--serif); font-size: 1.35rem; font-weight: 700;
   }
   .slot.filled { border-color: var(--ink-soft); }
+  .slot.miss { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); }
   .slot.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .slots.good .slot { border-color: var(--good); background: var(--good-soft); }
   .slots.bad .slot { border-color: var(--bad); background: var(--bad-soft); }
@@ -862,6 +863,7 @@
   // ── quiz state ──
   let queue = [], totalUnique = 0, doneCount = 0, retryTotal = 0;
   let firstTry = {}, sessionWrong = new Set(), cur = null, locked = false;
+  let feedbackAt = 0; // 오답 피드백 표시 시각 — Enter 연타로 바로 넘어가는 것 방지
 
   // 진행 중 시험 자동 저장/복원 (이 기기에 저장)
   const KEY_QUIZ = "voca_quiz_save";
@@ -1017,10 +1019,12 @@
 
   function renderSlots() {
     const v = $("qInput").value;
+    const target = cur ? cur.w.word.toLowerCase() : "";
     $("qTyped").textContent = v; // 입력한 철자를 이어진 단어로 표시
     [...$("qSlots").children].forEach((c, i) => {
       c.textContent = v[i] || "";
       c.classList.toggle("filled", i < v.length);
+      c.classList.toggle("miss", i < v.length && v[i] !== target[i]); // 틀린 철자는 빨갛게
       c.classList.toggle("active", i === v.length && !locked);
     });
   }
@@ -1060,6 +1064,7 @@
       fb.innerHTML = `<b>오답!</b> 정답: <b class="ans"></b> — <span></span><br>이 문제는 뒤에서 다시 나옵니다.`;
       fb.querySelector(".ans").textContent = w.word;
       fb.querySelector("span:not(.ans)").textContent = w.meaning;
+      feedbackAt = Date.now();
       $("qNext").style.display = "block";
       $("qNext").focus();
     }
@@ -1083,7 +1088,7 @@
     $("qTyped").classList.add(ok ? "good" : "bad"); // 오답이면 취소선으로 표시
     if (!ok) {
       // 정답 철자를 슬롯에 공개
-      [...$("qSlots").children].forEach((c, i) => { c.textContent = w.word[i] || ""; });
+      [...$("qSlots").children].forEach((c, i) => { c.textContent = w.word[i] || ""; c.classList.remove("miss"); });
     }
 
     const fb = $("qFeedback");
@@ -1100,6 +1105,7 @@
       fb.className = "feedback bad";
       fb.innerHTML = `<b>오답!</b> 정답: <b class="ans"></b><br>이 문제는 뒤에서 다시 나옵니다.`;
       fb.querySelector(".ans").textContent = w.word;
+      feedbackAt = Date.now();
       $("qNext").style.display = "block";
       $("qNext").focus();
     }
@@ -1108,7 +1114,10 @@
   }
   $("qSubmit").onclick = answerTyped;
   $("qInput").addEventListener("keydown", (e) => { if (e.key === "Enter") answerTyped(); });
-  $("qNext").onclick = nextQuestion;
+  $("qNext").onclick = () => {
+    if (Date.now() - feedbackAt < 350) return; // 피드백 직후 Enter 연타·홀드 무시
+    nextQuestion();
+  };
   $("qSave").onclick = () => { cur = null; show("home"); }; // 이미 문제마다 저장됨
   $("qQuit").onclick = () => {
     if (confirm("시험을 완전히 그만둘까요? 진행 상황이 삭제되고 기록도 남지 않습니다.")) {

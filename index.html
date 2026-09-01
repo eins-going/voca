@@ -170,6 +170,8 @@
     width: 100%; margin-top: 12px; padding: 13px; font-size: .98rem; font-weight: 700;
     background: var(--ink); color: var(--paper); border: none; border-radius: 10px; cursor: pointer; display: none; font-family: var(--sans);
   }
+  .quit-row { margin-top: 12px; }
+  .quit-row button { font-size: .85rem; color: var(--ink-soft); font-weight: 600; }
   .quitBtn { margin-top: 14px; width: 100%; background: none; border: none; color: var(--ink-soft); font-size: .8rem; cursor: pointer; text-decoration: underline; font-family: var(--sans); }
 
   /* ── result ── */
@@ -326,6 +328,14 @@
 
   <!-- ═══ 홈 ═══ -->
   <section class="view on" id="view-home">
+    <div class="card" id="resumeCard" hidden>
+      <h2>⏸ 진행 중인 시험</h2>
+      <p class="hint hint-tight" id="resumeInfo"></p>
+      <div class="btnrow">
+        <button id="resumeBtn" class="primary" type="button">이어서 하기</button>
+        <button id="restartBtn" type="button">처음부터 하기</button>
+      </div>
+    </div>
     <div class="card">
       <h2>내 현황</h2>
       <div class="stats">
@@ -457,7 +467,10 @@
       <div class="feedback" id="qFeedback"></div>
       <button class="nextBtn" id="qNext" type="button">다음 문제 →</button>
     </div>
-    <button class="quitBtn" id="qQuit" type="button">시험 그만두기</button>
+    <div class="btnrow quit-row">
+      <button id="qSave" type="button">💾 저장하고 나가기</button>
+      <button id="qQuit" type="button">기록 없이 그만두기</button>
+    </div>
   </section>
 
   <!-- ═══ 결과 ═══ -->
@@ -833,11 +846,54 @@
       : "–";
     $("stWrong").textContent = Object.keys(wrongDB).length;
     updateBadge();
+    const s = load(KEY_QUIZ, null);
+    $("resumeCard").hidden = !s;
+    if (s) $("resumeInfo").textContent = `${s.label} — 완료 ${s.doneCount}/${s.totalUnique} (${s.date} 저장)`;
   }
 
   // ── quiz state ──
   let queue = [], totalUnique = 0, doneCount = 0, retryTotal = 0;
   let firstTry = {}, sessionWrong = new Set(), cur = null, locked = false;
+
+  // 진행 중 시험 자동 저장/복원 (이 기기에 저장)
+  const KEY_QUIZ = "voca_quiz_save";
+  function saveQuizState() {
+    const items = (cur ? [cur, ...queue] : queue.slice()).map((q) => ({ w: q.w.word, qmode: q.qmode, retry: q.retry }));
+    if (!items.length) return;
+    save(KEY_QUIZ, {
+      items, totalUnique, doneCount, retryTotal,
+      firstTry, sessionWrong: [...sessionWrong],
+      scope: [...scopeSel], mode,
+      label: `${scopeName()} · ${modeLabel[mode]}`,
+      date: new Date().toISOString().slice(0, 16).replace("T", " "),
+    });
+  }
+  const clearQuizSave = () => localStorage.removeItem(KEY_QUIZ);
+
+  function resumeQuiz() {
+    const s = load(KEY_QUIZ, null);
+    if (!s) return;
+    queue = s.items.map((i) => ({ w: byWord[i.w], qmode: i.qmode, retry: i.retry })).filter((q) => q.w);
+    if (!queue.length) { clearQuizSave(); renderHome(); return; }
+    totalUnique = s.totalUnique; doneCount = s.doneCount; retryTotal = s.retryTotal;
+    firstTry = s.firstTry || {}; sessionWrong = new Set(s.sessionWrong || []);
+    scopeSel = new Set(s.scope); mode = s.mode;
+    renderScopes();
+    [...$("modeGrid").children].forEach((x) => x.classList.toggle("sel", x.dataset.mode === mode));
+    show("quiz");
+    nextQuestion();
+  }
+  $("resumeBtn").onclick = resumeQuiz;
+  $("restartBtn").onclick = () => {
+    const s = load(KEY_QUIZ, null);
+    clearQuizSave();
+    if (s) { // 같은 범위·유형으로 새로 시작
+      scopeSel = new Set(s.scope); mode = s.mode;
+      renderScopes();
+      [...$("modeGrid").children].forEach((x) => x.classList.toggle("sel", x.dataset.mode === mode));
+    }
+    startQuiz();
+  };
 
   function buildPool() {
     let pool;
@@ -947,6 +1003,7 @@
       setTimeout(() => inp.focus(), 50);
     }
     if (cur.qmode === "mc-ek") playWord(w.word); // 단어가 보이는 문제는 발음도 함께
+    saveQuizState(); // 문제마다 자동 저장 → 언제 닫아도 이어서 가능
   }
 
   function renderSlots() {
@@ -996,6 +1053,8 @@
       $("qNext").style.display = "block";
       $("qNext").focus();
     }
+    cur = null; // 답 처리 완료 — 재출제분은 이미 큐에 있으므로 저장본에서 현재 문제 제외
+    saveQuizState();
   }
 
   function answerTyped() {
@@ -1033,11 +1092,20 @@
       $("qNext").style.display = "block";
       $("qNext").focus();
     }
+    cur = null; // 답 처리 완료 — 저장본에서 현재 문제 제외
+    saveQuizState();
   }
   $("qSubmit").onclick = answerTyped;
   $("qInput").addEventListener("keydown", (e) => { if (e.key === "Enter") answerTyped(); });
   $("qNext").onclick = nextQuestion;
-  $("qQuit").onclick = () => { if (confirm("시험을 그만둘까요? 이번 시험 기록은 저장되지 않습니다.")) show("home"); };
+  $("qSave").onclick = () => { cur = null; show("home"); }; // 이미 문제마다 저장됨
+  $("qQuit").onclick = () => {
+    if (confirm("시험을 완전히 그만둘까요? 진행 상황이 삭제되고 기록도 남지 않습니다.")) {
+      clearQuizSave();
+      cur = null;
+      show("home");
+    }
+  };
 
   // 숫자키 1-4로 객관식 선택
   document.addEventListener("keydown", (e) => {
@@ -1052,6 +1120,7 @@
 
   // ── end quiz ──
   function endQuiz() {
+    clearQuizSave(); // 완주했으니 이어하기 저장본 제거
     const total = totalUnique;
     const correct = Object.values(firstTry).filter(Boolean).length;
     const pct = Math.round(correct / total * 100);

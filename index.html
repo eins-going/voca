@@ -142,6 +142,13 @@
   .choice.correct { border-color: var(--good); background: var(--good-soft); }
   .choice.wrong { border-color: var(--bad); background: var(--bad-soft); }
   .choice:disabled { cursor: default; opacity: .85; }
+  .typed-word {
+    font-family: var(--serif); font-size: 2rem; font-weight: 700; text-align: center;
+    min-height: 2.6rem; margin-bottom: 8px; overflow-wrap: break-word;
+  }
+  .typed-word:empty::before { content: "· · ·"; color: var(--line); font-size: 1.2rem; }
+  .typed-word.good { color: var(--good); }
+  .typed-word.bad { color: var(--bad); text-decoration: line-through; }
   .slots {
     display: flex; flex-wrap: wrap; gap: 6px; cursor: text; margin-bottom: 14px;
     min-height: 46px;
@@ -460,6 +467,7 @@
       <div id="qPrompt"></div>
       <div class="choices" id="qChoices"></div>
       <div class="typebox" id="qTypebox" hidden>
+        <div class="typed-word" id="qTyped" aria-live="polite"></div>
         <div class="slots" id="qSlots"></div>
         <input id="qInput" class="ghost-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="영어 철자 입력">
         <button id="qSubmit" type="button">확인 (Enter)</button>
@@ -988,6 +996,7 @@
       prompt.innerHTML = `<div class="prompt-meaning"></div><div class="prompt-sub">이 뜻의 영어 단어를 입력하세요 — 칸 수가 글자 수입니다</div>`;
       prompt.querySelector(".prompt-meaning").textContent = w.meaning;
       typebox.hidden = false;
+      $("qTyped").className = "typed-word";
       const slots = $("qSlots");
       slots.className = "slots";
       slots.innerHTML = "";
@@ -1008,6 +1017,7 @@
 
   function renderSlots() {
     const v = $("qInput").value;
+    $("qTyped").textContent = v; // 입력한 철자를 이어진 단어로 표시
     [...$("qSlots").children].forEach((c, i) => {
       c.textContent = v[i] || "";
       c.classList.toggle("filled", i < v.length);
@@ -1070,6 +1080,7 @@
     $("qInput").blur();
     renderSlots();
     $("qSlots").classList.add(ok ? "good" : "bad");
+    $("qTyped").classList.add(ok ? "good" : "bad"); // 오답이면 취소선으로 표시
     if (!ok) {
       // 정답 철자를 슬롯에 공개
       [...$("qSlots").children].forEach((c, i) => { c.textContent = w.word[i] || ""; });

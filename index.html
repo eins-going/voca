@@ -757,6 +757,14 @@
     } catch { speak(word); }
   }
   updateSoundBtn();
+  function prefetchAudio(word) {
+    // 재생 없이 미리 내려받아 audioCache에 보관 → 실제 재생 시 즉시 시작
+    if (!soundOn || !word || audioCache[word] !== undefined) return;
+    const a = new Audio(`${API}/api/audio/${encodeURIComponent(word)}`);
+    a.preload = "auto";
+    a.onerror = () => { audioCache[word] = null; }; // 실패는 조용히 (재생 시 TTS 폴백)
+    audioCache[word] = a;
+  }
 
   // ── theme ──
   const savedTheme = localStorage.getItem(KEY_THEME);
@@ -1036,6 +1044,8 @@
       setTimeout(() => inp.focus(), 50);
     }
     if (cur.qmode === "mc-ek") playWord(w.word); // 단어가 보이는 문제는 발음도 함께
+    else prefetchAudio(w.word); // 정답 공개 때 재생할 발음을 미리 받아둠
+    queue.slice(0, 2).forEach((q) => prefetchAudio(q.w.word)); // 다음 문제 발음 미리 받기
     saveQuizState(); // 문제마다 자동 저장 → 언제 닫아도 이어서 가능
   }
 
@@ -1334,6 +1344,22 @@
       im.hidden = true;
     }
     if (speakNow) playWord(w.word);
+    prefetchStudyAssets();
+  }
+  // 다음 카드들의 이미지·음성을 미리 받아둠 → 넘길 때 즉시 표시
+  const imgPrefetched = {};
+  function prefetchStudyAssets(count = 4) {
+    if (!studyList.length) return;
+    const n = Math.min(count, studyList.length - 1);
+    for (let k = -1; k <= n; k++) {
+      if (k === 0) continue; // 현재 카드는 renderStudyCard가 로드
+      const w = studyList[(studyIdx + k + studyList.length) % studyList.length];
+      if (imgOn && !imgPrefetched[w.word]) {
+        imgPrefetched[w.word] = true;
+        new Image().src = `${API}/api/image/${encodeURIComponent(w.word)}`;
+      }
+      prefetchAudio(w.word);
+    }
   }
   function renderStudyList() {
     const box = $("wlRows");
